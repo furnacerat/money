@@ -4,17 +4,39 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout";
 import { ToastProvider } from "@/components/ui";
-import { isOnboarded, getOnboardingData } from "@/lib/storage";
-import { Card, StatCard, StatusBadge, Countdown, ProgressBar, MiniStat, BillCard } from "@/components/ui";
+import { Card, StatusBadge, ProgressBar, Badge } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
-import { OnboardingData } from "@/lib/types";
-import { getDashboardData } from "@/lib/data";
-import { Household } from "@/lib/types";
-import { PiggyBank, Receipt, AlertTriangle, TrendingUp, DollarSign, Target, Shield } from "lucide-react";
+import { Household, Bill, PayFrequency } from "@/lib/types";
+import {
+  getDashboardState,
+  getBillsDueBeforePayday,
+  getBillFundingStatus,
+  getNextPayday,
+  getSavingsContribution,
+  PlanningSettings,
+} from "@/lib/planner";
+import {
+  getHouseholdData,
+  getFundingMap,
+  isOnboarded,
+  getSettings,
+} from "@/lib/storage";
+import { format, differenceInDays } from "date-fns";
+import {
+  PiggyBank,
+  Receipt,
+  AlertTriangle,
+  DollarSign,
+  Target,
+  Shield,
+  ChevronRight,
+} from "lucide-react";
 
-export default function Home() {
+export default function HomeDashboard() {
   const router = useRouter();
-  const [onboardingData, setOnboardingData] = useState<Partial<OnboardingData> | null>(null);
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [dashboardState, setDashboardState] = useState<ReturnType<typeof getDashboardState> | null>(null);
+  const [settings, setSettings] = useState<PlanningSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -23,14 +45,24 @@ export default function Home() {
         router.push("/onboarding");
         return;
       }
-      const data = getOnboardingData();
-      setOnboardingData(data);
+      
+      const data = getHouseholdData() as Household | null;
+      const fundingMap = getFundingMap();
+      const sets = getSettings();
+      
+      if (data) {
+        setHousehold(data);
+        setSettings(sets);
+        const state = getDashboardState(data, fundingMap, sets);
+        setDashboardState(state);
+      }
+      
       setIsLoading(false);
     };
     checkOnboarding();
   }, [router]);
 
-  if (isLoading || !onboardingData) {
+  if (isLoading || !household || !dashboardState || !settings) {
     return (
       <div className="min-h-screen bg-[#FAFBFC] flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
@@ -38,52 +70,26 @@ export default function Home() {
     );
   }
 
-  const mockHH: Household = {
-    id: "default",
-    name: onboardingData.householdName || "Your Household",
-    owner: { id: "1", name: onboardingData.userName || "You" },
-    incomeSources: [],
-    bills: (onboardingData.bills || []).map((bill, i) => ({
-      ...bill,
-      id: `bill-${i}`,
-      dueDate: bill.dueDay ? new Date(2026, 4, bill.dueDay).toISOString() : "",
-    })),
-    savingsGoals: [
-      {
-        id: "emergency",
-        name: "Emergency Fund",
-        targetAmount: onboardingData.emergencyFundTarget || 10000,
-        currentAmount: 0,
-        type: "emergency",
-        isCompleted: false,
-        priority: 1,
-        contributionPerPaycheck: onboardingData.minSavingsPerPaycheck || 200,
-      },
-    ],
-    settings: {
-      savingsMode: (onboardingData.savingsMode || "normal") as "survival" | "normal" | "growth",
-      minSavingsPerPaycheck: onboardingData.minSavingsPerPaycheck || 200,
-      buffer: {
-        currentBalance: onboardingData.currentBalance || 0,
-        targetBuffer: onboardingData.targetBuffer || 1000,
-        cashOnHand: onboardingData.cashOnHand || 0,
-      },
-      notifications: {
-        billReminders: true,
-        paydayReminders: true,
-        lowBalanceAlerts: true,
-      },
-    },
-    currentBalance: onboardingData.currentBalance || 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  const incomeSource = household.incomeSources[0];
+  const payday = incomeSource
+    ? getNextPayday(incomeSource.frequency, incomeSource.nextPayday)
+    : new Date();
+  const daysUntil = differenceInDays(payday, new Date());
+  const billsDue = dashboardState.billsDueBeforePayday;
 
-  const dashboard = getDashboardData(mockHH);
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "on_track": return "On Track";
+      case "tight_this_week": return "Tight This Week";
+      case "bills_covered": return "Bills Covered";
+      case "shortfall_risk": return "Shortfall Risk";
+      default: return status;
+    }
+  };
 
   return (
     <ToastProvider>
-      <AppShell householdName={onboardingData.householdName}>
+      <AppShell householdName={household.name}>
         <div className="space-y-6 animate-fade-in">
           {/* Hero: Safe to Spend */}
           <Card variant="gradient" className="relative overflow-hidden">
@@ -93,31 +99,34 @@ export default function Home() {
                 Safe to Spend
               </p>
               <p className="text-5xl sm:text-6xl font-bold text-slate-800">
-                {formatCurrency(dashboard.safeToSpend)}
+                {formatCurrency(dashboardState.safeToSpend)}
               </p>
               <p className="text-sm text-slate-500 mt-2">
                 from your current balance
               </p>
               <div className="mt-4">
-                <StatusBadge status={dashboard.overallStatus} />
+                <StatusBadge status={dashboardState.overallStatus} />
               </div>
             </div>
           </Card>
 
           {/* Payday Countdown */}
           <div className="grid grid-cols-2 gap-4">
-            <Countdown
-              targetDate={onboardingData.nextPayday || new Date().toISOString()}
-              label="Next Payday"
-              size="md"
-            />
+            <Card padding="md" className="flex flex-col items-center justify-center">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${daysUntil <= 1 ? "bg-emerald-100" : "bg-violet-100"}`}>
+                <DollarSign className={`w-5 h-5 ${daysUntil <= 1 ? "text-emerald-600" : "text-violet-600"}`} />
+              </div>
+              <p className="text-sm text-slate-500">Next Payday</p>
+              <p className="text-2xl font-bold text-slate-800">{daysUntil}</p>
+              <p className="text-xs text-slate-500">{daysUntil === 1 ? "day away" : "days"}</p>
+            </Card>
             <Card padding="md" className="flex flex-col items-center justify-center">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mb-2">
                 <DollarSign className="text-emerald-600" size={20} />
               </div>
               <p className="text-sm text-slate-500">Current Balance</p>
               <p className="text-2xl font-bold text-slate-800 mt-1">
-                {formatCurrency(onboardingData.currentBalance || 0)}
+                {formatCurrency(household.currentBalance)}
               </p>
             </Card>
           </div>
@@ -134,19 +143,21 @@ export default function Home() {
               </div>
             </div>
             <p className="text-3xl font-bold text-violet-600">
-              {formatCurrency(dashboard.amountSetAside)}
+              {formatCurrency(dashboardState.amountSetAside)}
             </p>
             <div className="mt-3 space-y-2">
-              <MiniStat
-                label="Monthly bills"
-                value={formatCurrency(dashboard.totalBillsDue)}
-                color="#8B5CF6"
-              />
-              <MiniStat
-                label="Savings per paycheck"
-                value={formatCurrency(onboardingData.minSavingsPerPaycheck || 0)}
-                color="#10B981"
-              />
+              <div className="flex justify-between py-2 px-3 rounded-lg bg-slate-50">
+                <span className="text-sm text-slate-600">Bills due</span>
+                <span className="text-sm font-semibold text-slate-800">
+                  {formatCurrency(dashboardState.totalBillsDue)}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 px-3 rounded-lg bg-slate-50">
+                <span className="text-sm text-slate-600">Savings</span>
+                <span className="text-sm font-semibold text-emerald-600">
+                  {formatCurrency(dashboardState.savingsTarget)}
+                </span>
+              </div>
             </div>
           </Card>
 
@@ -160,22 +171,56 @@ export default function Home() {
                 <div>
                   <p className="font-semibold text-slate-800">Bills Before Payday</p>
                   <p className="text-sm text-slate-500">
-                    {dashboard.billsDueBeforePayday.length} bills due
+                    {billsDue.length} bills due
                   </p>
                 </div>
               </div>
               <p className="text-xl font-bold text-slate-800">
-                {formatCurrency(dashboard.totalBillsDue)}
+                {formatCurrency(dashboardState.totalBillsDue)}
               </p>
             </div>
-            {dashboard.billsDueBeforePayday.length > 0 ? (
+            {billsDue.length > 0 ? (
               <div className="space-y-2">
-                {dashboard.billsDueBeforePayday.slice(0, 3).map((bill) => (
-                  <BillCard key={bill.id} bill={bill} compact />
-                ))}
-                {dashboard.billsDueBeforePayday.length > 3 && (
+                {billsDue.slice(0, 4).map((bill) => {
+                  const status = getBillFundingStatus(bill, getFundingMap()[bill.id] || 0);
+                  const progress = bill.amount > 0
+                    ? status.fundedAmount / bill.amount
+                    : 0;
+                  
+                  return (
+                    <div key={bill.id} className="p-3 rounded-xl bg-slate-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-800">{bill.name}</span>
+                          {bill.isAutoPay && (
+                            <Badge variant="info" size="sm">Auto</Badge>
+                          )}
+                        </div>
+                        <span className="font-semibold text-slate-800">
+                          {formatCurrency(bill.amount)}
+                        </span>
+                      </div>
+                      <ProgressBar
+                        progress={progress}
+                        color={status.isFunded ? "#10B981" : "#8B5CF6"}
+                        height={6}
+                      />
+                      <div className="flex justify-between mt-1">
+                        <span className="text-xs text-slate-500">
+                          {formatCurrency(status.fundedAmount)} funded
+                        </span>
+                        <span className={`text-xs font-medium ${
+                          status.isFunded ? "text-emerald-600" : "text-amber-600"
+                        }`}>
+                          {status.isFunded ? "Covered" : `${formatCurrency(status.remainingNeeded)} needed`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {billsDue.length > 4 && (
                   <p className="text-sm text-slate-500 text-center py-2">
-                    +{dashboard.billsDueBeforePayday.length - 3} more bills
+                    +{billsDue.length - 4} more bills
                   </p>
                 )}
               </div>
@@ -186,7 +231,7 @@ export default function Home() {
             )}
           </Card>
 
-          {/* Savings Progress */}
+          {/* Savings Summary */}
           <Card>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
@@ -194,49 +239,48 @@ export default function Home() {
               </div>
               <div>
                 <p className="font-semibold text-slate-800">Savings</p>
-                <p className="text-sm text-slate-500">
-                  {onboardingData.savingsMode || "Normal"} mode
+                <p className="text-sm text-slate-500 capitalize">
+                  {household.settings.savingsMode} mode
                 </p>
               </div>
             </div>
-            <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-slate-700">Emergency Fund</p>
-                  <p className="text-sm font-semibold text-slate-800">
-                    {formatCurrency(0)} / {formatCurrency(onboardingData.emergencyFundTarget || 10000)}
-                  </p>
-                </div>
-                <ProgressBar
-                  progress={0}
-                  color="#10B981"
-                  height={8}
-                />
+                <p className="text-sm text-slate-500">Per paycheck</p>
+                <p className="text-xl font-bold text-emerald-600">
+                  {formatCurrency(dashboardState.savingsTarget)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-slate-500">Progress</p>
+                <p className="text-xl font-bold text-slate-800">
+                  {household.savingsGoals.length} goals
+                </p>
               </div>
             </div>
           </Card>
 
-          {/* Quick Stats Row */}
+          {/* Quick Stats */}
           <div className="grid grid-cols-3 gap-3">
             <Card padding="sm" className="text-center">
               <Target className="mx-auto text-blue-500 mb-2" size={20} />
-              <p className="text-xs text-slate-500">Total Saved</p>
+              <p className="text-xs text-slate-500">Savings Goals</p>
               <p className="text-lg font-bold text-slate-800">
-                {formatCurrency(dashboard.savingsProgress)}
+                {household.savingsGoals.length}
               </p>
             </Card>
             <Card padding="sm" className="text-center">
-              <TrendingUp className="mx-auto text-violet-500 mb-2" size={20} />
-              <p className="text-xs text-slate-500">Per Paycheck</p>
-              <p className="text-lg font-bold text-slate-800">
-                {formatCurrency(onboardingData.paycheckAmount || 0)}
-              </p>
-            </Card>
-            <Card padding="sm" className="text-center">
-              <Shield className="mx-auto text-emerald-500 mb-2" size={20} />
+              <Shield className="mx-auto text-violet-500 mb-2" size={20} />
               <p className="text-xs text-slate-500">Buffer</p>
               <p className="text-lg font-bold text-slate-800">
-                {formatCurrency(onboardingData.targetBuffer || 0)}
+                {formatCurrency(settings.minBuffer)}
+              </p>
+            </Card>
+            <Card padding="sm" className="text-center">
+              <DollarSign className="mx-auto text-emerald-500 mb-2" size={20} />
+              <p className="text-xs text-slate-500">Per Check</p>
+              <p className="text-lg font-bold text-slate-800">
+                {formatCurrency(incomeSource?.amount || 0)}
               </p>
             </Card>
           </div>
@@ -244,10 +288,12 @@ export default function Home() {
           {/* Reassuring Message */}
           <Card variant="outlined" padding="md" className="text-center">
             <p className="text-slate-600">
-              {dashboard.overallStatus === "on_track"
+              {dashboardState.overallStatus === "on_track"
                 ? "You're on track! Your money is working hard for your family."
-                : dashboard.overallStatus === "tight_this_week"
+                : dashboardState.overallStatus === "tight_this_week"
                 ? "This week's a bit tight, but you've got this."
+                : dashboardState.shortfall > 0
+                ? "You have a shortfall. Let's adjust your plan."
                 : "Your bills are covered. That's what matters most."}
             </p>
           </Card>

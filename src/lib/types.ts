@@ -225,3 +225,28 @@ export type Toast = {
   type: ToastType;
   message: string;
 };
+
+export type PaycheckEntry = {
+  id: string;
+  amount: number;
+  date: string;
+  incomeSourceId: string;
+  notes?: string;
+  allocations: PaycheckAllocation[];
+  status: "planned" | "confirmed" | "completed";
+  createdAt: string;
+};
+
+export type PaycheckAllocation = {
+  category: "bills" | "savings" | "groceries" | "gas" | "cushion" | "safe";
+  label: string;
+  amount: number;
+  color: string;
+};
+
+export type BillFunding = {
+  billId: string;
+  amount: number;
+  date: string;
+  paycheckId: string;
+};

@@ -3,6 +3,8 @@ import { OnboardingData, OnboardingStep } from "./types";
 const STORAGE_KEYS = {
   ONBOARDING_DATA: "household_planner_onboarding",
   HOUSEHOLD_DATA: "household_planner_household",
+  FUNDING_MAP: "household_planner_funding",
+  PAYCHECK_PLANS: "household_planner_plans",
   SETTINGS: "household_planner_settings",
   IS_ONBOARDED: "household_planner_onboarded",
 } as const;
@@ -58,23 +60,87 @@ export function getHouseholdData(): unknown | null {
   }
 }
 
-export function saveSettings(data: unknown): void {
+export function saveFundingMap(fundingMap: Record<string, number>): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEYS.FUNDING_MAP, JSON.stringify(fundingMap));
+  } catch (error) {
+    console.error("Failed to save funding map:", error);
+  }
+}
+
+export function getFundingMap(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.FUNDING_MAP);
+    return data ? JSON.parse(data) : {};
+  } catch (error) {
+    console.error("Failed to load funding map:", error);
+    return {};
+  }
+}
+
+export function updateBillFunding(billId: string, amount: number): void {
+  const current = getFundingMap();
+  current[billId] = amount;
+  saveFundingMap(current);
+}
+
+export function savePaycheckPlans(plans: unknown[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.PAYCHECK_PLANS, JSON.stringify(plans));
+  } catch (error) {
+    console.error("Failed to save paycheck plans:", error);
+  }
+}
+
+export function getPaycheckPlans(): unknown[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.PAYCHECK_PLANS);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error("Failed to load paycheck plans:", error);
+    return [];
+  }
+}
+
+export type PlanningSettings = {
+  groceryDefault: number;
+  gasDefault: number;
+  minBuffer: number;
+  minSavings: number;
+  autoReserveBills: boolean;
+};
+
+const DEFAULT_SETTINGS: PlanningSettings = {
+  groceryDefault: 400,
+  gasDefault: 150,
+  minBuffer: 200,
+  minSavings: 200,
+  autoReserveBills: true,
+};
+
+export function saveSettings(settings: Partial<PlanningSettings>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const current = getSettings();
+    const updated = { ...current, ...settings };
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
   } catch (error) {
     console.error("Failed to save settings:", error);
   }
 }
 
-export function getSettings(): unknown | null {
-  if (typeof window === "undefined") return null;
+export function getSettings(): PlanningSettings {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return data ? JSON.parse(data) : null;
+    return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
   } catch (error) {
     console.error("Failed to load settings:", error);
-    return null;
+    return DEFAULT_SETTINGS;
   }
 }
 

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Select, Toggle } from "@/components/ui";
 import { OnboardingData, OnboardingStep, Bill, PayFrequency } from "@/lib/types";
-import { saveOnboardingData, getOnboardingData, clearOnboardingData, setOnboarded } from "@/lib/storage";
+import { saveOnboardingData, getOnboardingData, clearOnboardingData, setOnboarded, saveHouseholdData } from "@/lib/storage";
 import { formatCurrency } from "@/lib/utils";
 import {
   Home,
@@ -118,6 +118,53 @@ export default function OnboardingPage() {
   };
 
   const handleComplete = () => {
+    const householdData = {
+      id: `household-${Date.now()}`,
+      name: data.householdName || "My Household",
+      owner: { id: "user-1", name: data.userName || "Me" },
+      spouse: data.spouseName ? { id: "user-2", name: data.spouseName } : undefined,
+      incomeSources: data.paycheckAmount ? [{
+        id: `income-${Date.now()}`,
+        name: data.incomeSource || "Primary Income",
+        amount: data.paycheckAmount,
+        frequency: data.payFrequency || "biweekly",
+        nextPayday: data.nextPayday || new Date().toISOString(),
+        hasVariableIncome: data.hasVariableIncome || false,
+      }] : [],
+      bills: (data.bills || []).map((b, i) => ({
+        ...b,
+        id: `bill-${Date.now()}-${i}`,
+      })),
+      savingsGoals: [{
+        id: `savings-${Date.now()}`,
+        name: "Emergency Fund",
+        targetAmount: data.emergencyFundTarget || 10000,
+        currentAmount: 0,
+        type: "emergency" as const,
+        isCompleted: false,
+        priority: 1,
+        contributionPerPaycheck: data.minSavingsPerPaycheck || 200,
+      }],
+      settings: {
+        savingsMode: data.savingsMode || "normal",
+        minSavingsPerPaycheck: data.minSavingsPerPaycheck || 200,
+        buffer: {
+          currentBalance: data.currentBalance || 0,
+          targetBuffer: data.targetBuffer || 1000,
+          cashOnHand: data.cashOnHand || 0,
+        },
+        notifications: {
+          billReminders: true,
+          paydayReminders: true,
+          lowBalanceAlerts: true,
+        },
+      },
+      currentBalance: data.currentBalance || 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveHouseholdData(householdData);
     setOnboarded(true);
     router.push("/");
   };

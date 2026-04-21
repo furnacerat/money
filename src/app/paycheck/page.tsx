@@ -1,25 +1,59 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout";
 import { ToastProvider } from "@/components/ui";
-import { Card, EmptyState } from "@/components/ui";
-import { getOnboardingData } from "@/lib/storage";
+import { Card, Button } from "@/components/ui";
+import { getHouseholdData, isOnboarded } from "@/lib/storage";
 import { formatCurrency } from "@/lib/utils";
-import { format } from "date-fns";
-import { Wallet, Calendar, ChevronRight } from "lucide-react";
+import { Household, PayFrequency } from "@/lib/types";
+import { getNextPayday } from "@/lib/planner";
+import { format, differenceInDays } from "date-fns";
+import { Wallet, Plus, ChevronRight } from "lucide-react";
+import PaycheckPlanningFlow from "@/components/paycheck/PaycheckPlanningFlow";
 
 export default function PaycheckPage() {
-  const data = getOnboardingData();
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [showPlanning, setShowPlanning] = useState(false);
 
-  const monthlyIncome = (data.paycheckAmount || 0) * 2;
-  const nextPayday = data.nextPayday
-    ? format(new Date(data.nextPayday), "EEEE, MMM d")
-    : "Not set";
+  useEffect(() => {
+    const data = getHouseholdData() as Household | null;
+    if (data) {
+      setHousehold(data);
+    }
+  }, []);
+
+  if (!household) {
+    return (
+      <ToastProvider>
+        <AppShell>
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+          </div>
+        </AppShell>
+      </ToastProvider>
+    );
+  }
+
+  if (showPlanning) {
+    return (
+      <ToastProvider>
+        <AppShell householdName={household.name}>
+          <PaycheckPlanningFlow />
+        </AppShell>
+      </ToastProvider>
+    );
+  }
+
+  const incomeSource = household.incomeSources[0];
+  const payday = incomeSource
+    ? getNextPayday(incomeSource.frequency, incomeSource.nextPayday)
+    : null;
+  const daysUntil = payday ? differenceInDays(payday, new Date()) : 0;
 
   return (
     <ToastProvider>
-      <AppShell>
+      <AppShell householdName={household.name}>
         <div className="space-y-6">
           <Card variant="gradient" padding="lg" className="relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-violet-600 to-purple-700 opacity-10" />
@@ -31,43 +65,68 @@ export default function PaycheckPage() {
                 Next Paycheck
               </p>
               <p className="text-4xl font-bold text-slate-800">
-                {formatCurrency(data.paycheckAmount || 0)}
+                {formatCurrency(incomeSource?.amount || 0)}
               </p>
               <p className="text-sm text-slate-500 mt-2">
-                arriving {nextPayday}
+                {payday ? `arriving ${format(payday, "EEEE, MMM d")} (${daysUntil} days)` : "Set up your income in onboarding"}
               </p>
             </div>
           </Card>
 
+          <Button
+            size="lg"
+            className="w-full"
+            onClick={() => setShowPlanning(true)}
+            leftIcon={<Plus size={20} />}
+            rightIcon={<ChevronRight size={20} />}
+          >
+            Plan a Paycheck
+          </Button>
+
           <Card padding="lg">
-            <h3 className="font-semibold text-slate-800 mb-4">Quick Info</h3>
+            <h3 className="font-semibold text-slate-800 mb-4">Income Details</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-slate-600">Pay frequency</span>
-                <span className="font-medium text-slate-800 capitalize">
-                  {data.payFrequency || "Bi-weekly"}
+                <span className="text-slate-600">Source</span>
+                <span className="font-medium text-slate-800">
+                  {incomeSource?.name || "Not set"}
                 </span>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-slate-600">Monthly estimate</span>
+                <span className="text-slate-600">Frequency</span>
+                <span className="font-medium text-slate-800 capitalize">
+                  {incomeSource?.frequency || "Bi-weekly"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                <span className="text-slate-600">Per month</span>
                 <span className="font-medium text-slate-800">
-                  {formatCurrency(monthlyIncome)}
+                  {formatCurrency((incomeSource?.amount || 0) * 2)}
                 </span>
               </div>
               <div className="flex items-center justify-between py-2">
                 <span className="text-slate-600">Savings mode</span>
                 <span className="font-medium text-slate-800 capitalize">
-                  {data.savingsMode || "Normal"}
+                  {household.settings.savingsMode}
                 </span>
               </div>
             </div>
           </Card>
 
-          <EmptyState
-            icon={<Calendar size={24} className="text-slate-400" />}
-            title="More coming soon"
-            description="Full paycheck planning with bill allocation will be available after Phase 2."
-          />
+          <Card padding="lg">
+            <h3 className="font-semibold text-slate-800 mb-4">Upcoming</h3>
+            {payday && (
+              <div className="flex items-center justify-between py-3 rounded-xl bg-slate-50 px-4">
+                <div>
+                  <p className="font-medium text-slate-800">Next payday</p>
+                  <p className="text-sm text-slate-500">{format(payday, "EEEE, MMM d")}</p>
+                </div>
+                <p className="text-xl font-bold text-emerald-600">
+                  {formatCurrency(incomeSource?.amount || 0)}
+                </p>
+              </div>
+            )}
+          </Card>
         </div>
       </AppShell>
     </ToastProvider>
