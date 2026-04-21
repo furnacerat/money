@@ -1,23 +1,20 @@
 import {
   Household,
-  Bill,
-  SavingsGoal,
-  Paycheck,
   DashboardData,
   CalendarEvent,
-  PayFrequency,
 } from "./types";
-import { addDays, addWeeks, differenceInDays, format, isBefore, parseISO } from "date-fns";
+import { differenceInDays, format, isBefore } from "date-fns";
 
 const today = new Date();
 
 export function getDashboardData(household: Household): DashboardData {
   const now = new Date();
-  const upcomingPaycheck = household.paychecks.find((p) => !p.isReceived);
-  const paydayDate = upcomingPaycheck ? parseISO(upcomingPaycheck.date) : now;
+  const paydayDate = household.incomeSources.length > 0 
+    ? new Date(household.incomeSources[0].nextPayday)
+    : now;
 
   const billsDueSoon = household.bills.filter((bill) => {
-    const dueDate = new Date(today.getFullYear(), today.getMonth(), bill.dueDay);
+    const dueDate = new Date(now.getFullYear(), now.getMonth(), bill.dueDay);
     return isBefore(dueDate, paydayDate) && bill.status !== "paid";
   });
 
@@ -49,7 +46,7 @@ export function getDashboardData(household: Household): DashboardData {
 
   return {
     safeToSpend: Math.max(0, safeToSpend),
-    nextPayday: upcomingPaycheck?.date || "",
+    nextPayday: paydayDate.toISOString(),
     paydayCountdown: differenceInDays(paydayDate, now),
     billsDueBeforePayday: billsDueSoon,
     totalBillsDue,
@@ -57,8 +54,8 @@ export function getDashboardData(household: Household): DashboardData {
     savingsProgress: totalSaved,
     savingsTarget: totalTarget,
     overallStatus: status,
-    currentPaycheck: household.paychecks.find((p) => p.isReceived) || null,
-    nextPaycheck: upcomingPaycheck || null,
+    currentPaycheck: null,
+    nextPaycheck: null,
     recentActivity: [],
   };
 }
@@ -66,13 +63,13 @@ export function getDashboardData(household: Household): DashboardData {
 export function getCalendarEvents(household: Household): CalendarEvent[] {
   const events: CalendarEvent[] = [];
 
-  household.paychecks.forEach((paycheck) => {
+  household.incomeSources.forEach((source) => {
     events.push({
-      id: `pay-${paycheck.id}`,
-      date: paycheck.date,
+      id: `pay-${source.id}`,
+      date: source.nextPayday,
       type: "payday",
-      title: paycheck.isReceived ? "Paycheck Received" : "Payday",
-      amount: paycheck.amount,
+      title: source.name,
+      amount: source.amount,
       isHighlighted: true,
     });
   });
@@ -91,24 +88,4 @@ export function getCalendarEvents(household: Household): CalendarEvent[] {
     });
 
   return events.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-export function calculateNextPayday(
-  frequency: PayFrequency,
-  lastPayday?: string
-): string {
-  const base = lastPayday ? parseISO(lastPayday) : today;
-
-  switch (frequency) {
-    case "weekly":
-      return format(addWeeks(base, 1), "yyyy-MM-dd");
-    case "biweekly":
-      return format(addWeeks(base, 2), "yyyy-MM-dd");
-    case "semimonthly":
-      return format(addDays(base, 15), "yyyy-MM-dd");
-    case "monthly":
-      return format(addDays(base, 30), "yyyy-MM-dd");
-    default:
-      return format(addWeeks(base, 2), "yyyy-MM-dd");
-  }
 }

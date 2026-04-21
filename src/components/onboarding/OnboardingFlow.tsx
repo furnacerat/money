@@ -433,7 +433,7 @@ export default function OnboardingPage() {
                   <Card padding="md">
                     <p className="text-sm font-medium text-slate-500 mb-3">Added bills</p>
                     <div className="space-y-2">
-                      {data.bills.map((bill, index) => (
+                      {(data.bills || []).map((bill, index) => (
                         <div
                           key={index}
                           className="flex items-center justify-between p-3 rounded-xl bg-slate-50"
