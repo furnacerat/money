@@ -10,7 +10,6 @@ import {
   CalendarEvent,
 } from "./types";
 import {
-  mockHousehold,
   getDashboardData,
   getCalendarEvents,
 } from "./data";
@@ -31,13 +30,31 @@ type HouseholdContextType = {
   getPaycheckPlan: (paycheck: Paycheck) => PaycheckPlan;
 };
 
+const defaultHousehold: Household = {
+  id: "default",
+  name: "Your Household",
+  owner: { id: "1", name: "You" },
+  incomeSources: [],
+  bills: [],
+  savingsGoals: [],
+  settings: {
+    savingsMode: "normal",
+    minSavingsPerPaycheck: 200,
+    buffer: { currentBalance: 0, targetBuffer: 1000, cashOnHand: 0 },
+    notifications: { billReminders: true, paydayReminders: true, lowBalanceAlerts: true },
+  },
+  currentBalance: 0,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
 const HouseholdContext = createContext<HouseholdContextType | null>(null);
 
 export function HouseholdProvider({ children }: { children: ReactNode }) {
-  const [household, setHousehold] = useState<Household>(mockHousehold);
-  const [dashboard] = useState<DashboardData>(() => getDashboardData(mockHousehold));
+  const [household, setHousehold] = useState<Household>(defaultHousehold);
+  const [dashboard] = useState<DashboardData>(() => getDashboardData(defaultHousehold));
   const [calendarEvents] = useState<CalendarEvent[]>(() =>
-    getCalendarEvents(mockHousehold)
+    getCalendarEvents(defaultHousehold)
   );
 
   const updateCurrentBalance = (amount: number) => {

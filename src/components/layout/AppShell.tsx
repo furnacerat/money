@@ -1,26 +1,57 @@
 "use client";
 
-import React, { ReactNode } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NavItem } from "@/components/ui";
+import { Sheet } from "@/components/ui/Modal";
+import {
+  Home,
+  Calendar,
+  Receipt,
+  MoreHorizontal,
+  ChevronRight,
+  PiggyBank,
+  CreditCard,
+  Bell,
+  BarChart3,
+  Settings,
+  Users,
+} from "lucide-react";
 
 interface AppShellProps {
-  children: ReactNode;
+  children: React.ReactNode;
   householdName?: string;
 }
 
 const navItems = [
   { href: "/", icon: "home" as const, label: "Home" },
-  { href: "/paycheck", icon: "wallet" as const, label: "Plan" },
+  { href: "/paycheck", icon: "calendar" as const, label: "Paycheck" },
   { href: "/bills", icon: "bills" as const, label: "Bills" },
-  { href: "/savings", icon: "savings" as const, label: "Savings" },
-  { href: "/calendar", icon: "calendar" as const, label: "Calendar" },
+  { href: "/timeline", icon: "calendar" as const, label: "Timeline" },
+  { href: "#more", icon: "more" as const, label: "More" },
 ];
 
-export function AppShell({ children, householdName = "Your Family" }: AppShellProps) {
+const moreLinks = [
+  { href: "/savings", icon: PiggyBank, label: "Savings" },
+  { href: "/expenses", icon: CreditCard, label: "Expenses" },
+  { href: "/alerts", icon: Bell, label: "Alerts" },
+  { href: "/reports", icon: BarChart3, label: "Reports" },
+  { href: "/settings", icon: Settings, label: "Settings" },
+  { href: "/household", icon: Users, label: "Household" },
+];
+
+export function AppShell({ children, householdName = "Your Household" }: AppShellProps) {
   const pathname = usePathname();
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  const isMoreActive = pathname.startsWith("/savings") ||
+    pathname.startsWith("/expenses") ||
+    pathname.startsWith("/alerts") ||
+    pathname.startsWith("/reports") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/household");
 
   return (
     <div className="min-h-screen bg-[#FAFBFC] pb-20">
@@ -40,19 +71,68 @@ export function AppShell({ children, householdName = "Your Family" }: AppShellPr
 
       <main className="max-w-lg mx-auto px-4 py-6">{children}</main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 safe-area-pb">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 z-50">
         <div className="max-w-lg mx-auto flex items-center justify-around py-2">
-          {navItems.map((item) => (
-            <NavItem
-              key={item.href}
-              href={item.href}
-              icon={item.icon}
-              label={item.label}
-              isActive={pathname === item.href}
-            />
-          ))}
+          {navItems.map((item) => {
+            if (item.href === "#more") {
+              return (
+                <button
+                  key={item.href}
+                  onClick={() => setIsMoreOpen(true)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all duration-200",
+                    isMoreActive
+                      ? "text-violet-600 bg-violet-50"
+                      : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                  )}
+                >
+                  <MoreHorizontal size={24} strokeWidth={isMoreActive ? 2.5 : 2} />
+                  <span className={cn("text-xs font-medium", isMoreActive && "font-semibold")}>
+                    {item.label}
+                  </span>
+                </button>
+              );
+            }
+            return (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                icon={item.icon as "home" | "bills" | "savings"}
+                label={item.label}
+                isActive={pathname === item.href}
+              />
+            );
+          })}
         </div>
       </nav>
+
+      <Sheet
+        isOpen={isMoreOpen}
+        onClose={() => setIsMoreOpen(false)}
+        title="More"
+      >
+        <div className="space-y-2">
+          {moreLinks.map((link) => {
+            const Icon = link.icon;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setIsMoreOpen(false)}
+                className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <span className="font-medium text-slate-800">{link.label}</span>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-400" />
+              </Link>
+            );
+          })}
+        </div>
+      </Sheet>
     </div>
   );
 }

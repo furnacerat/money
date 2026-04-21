@@ -6,7 +6,7 @@ import { Bill } from "@/lib/types";
 import { formatCurrency, getBillCategoryColor } from "@/lib/utils";
 import { Badge } from "./Badge";
 import { Card } from "./Card";
-import { format, parseISO, differenceInDays } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import {
   Calendar,
   CreditCard,
@@ -46,8 +46,9 @@ const frequencyLabels: Record<string, string> = {
 };
 
 export function BillCard({ bill, onMarkPaid, compact = false }: BillCardProps) {
-  const dueDate = parseISO(bill.dueDate);
-  const daysUntilDue = differenceInDays(dueDate, new Date());
+  const today = new Date();
+  const dueDate = new Date(today.getFullYear(), today.getMonth(), bill.dueDay);
+  const daysUntilDue = differenceInDays(dueDate, today);
   const Icon = categoryIcons[bill.category] || Package;
   const categoryColor = getBillCategoryColor(bill.category);
 
@@ -133,11 +134,6 @@ export function BillCard({ bill, onMarkPaid, compact = false }: BillCardProps) {
           <p className="text-xl font-bold text-slate-800">
             {formatCurrency(bill.amount)}
           </p>
-          {bill.isReserved && (
-            <p className="text-xs text-emerald-600 mt-1">
-              {formatCurrency(bill.reservedAmount)} reserved
-            </p>
-          )}
         </div>
       </div>
       {onMarkPaid && bill.status !== "paid" && (
