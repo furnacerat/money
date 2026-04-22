@@ -20,7 +20,10 @@ import {
   getFundingMap,
   isOnboarded,
   getSettings,
+  getAlerts,
+  getPlanningRules,
 } from "@/lib/storage";
+import { analyzeShortfall, generateRecommendations, analyzeAlerts } from "@/lib/intelligence";
 import { format, differenceInDays } from "date-fns";
 import {
   PiggyBank,
@@ -30,7 +33,13 @@ import {
   Target,
   Shield,
   ChevronRight,
+  Zap,
+  CheckCircle,
+  TrendingUp,
+  Bell,
+  ArrowRight,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function HomeDashboard() {
   const router = useRouter();
@@ -38,6 +47,8 @@ export default function HomeDashboard() {
   const [dashboardState, setDashboardState] = useState<ReturnType<typeof getDashboardState> | null>(null);
   const [settings, setSettings] = useState<PlanningSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [shortfall, setShortfall] = useState<ReturnType<typeof analyzeShortfall> | null>(null);
+  const [recommendations, setRecommendations] = useState<ReturnType<typeof generateRecommendations>>([]);
 
   useEffect(() => {
     const checkOnboarding = () => {
@@ -55,6 +66,14 @@ export default function HomeDashboard() {
         setSettings(sets);
         const state = getDashboardState(data, fundingMap, sets);
         setDashboardState(state);
+        
+        const sf = analyzeShortfall();
+        setShortfall(sf);
+        
+        const recs = generateRecommendations();
+        setRecommendations(recs);
+        
+        analyzeAlerts();
       }
       
       setIsLoading(false);
@@ -259,6 +278,63 @@ export default function HomeDashboard() {
               </div>
             </div>
           </Card>
+
+          {/* Intelligent Status Banner */}
+          {shortfall && shortfall.isTight && (
+            <Card 
+              className="border-l-4 border-amber-500 bg-amber-50"
+              padding="lg"
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="text-amber-600 mt-1" size={24} />
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-800">Tight Month Ahead</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    {shortfall.shortfallAmount > 0 
+                      ? `You're short ${formatCurrency(shortfall.shortfallAmount)} this pay period.`
+                      : "Your buffer is lower than usual."
+                    }
+                  </p>
+                  <Link href="/alerts">
+                    <button className="mt-2 text-sm font-medium text-amber-700 hover:text-amber-800 flex items-center gap-1">
+                      View Plan <ArrowRight size={14} />
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* All Protected - Positive reinforcement */}
+          {shortfall && !shortfall.isTight && (
+            <Card 
+              className="border-l-4 border-emerald-500 bg-emerald-50"
+              padding="lg"
+            >
+              <div className="flex items-start gap-3">
+                <CheckCircle className="text-emerald-600 mt-1" size={24} />
+                <div className="flex-1">
+                  <p className="font-semibold text-emerald-800">You're Protected</p>
+                  <p className="text-sm text-emerald-700 mt-1">
+                    Bills are covered and your buffer is healthy. Great job!
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Top Recommendation */}
+          {recommendations.length > 0 && !shortfall?.isTight && (
+            <Card padding="md" className="bg-blue-50 border border-blue-200">
+              <div className="flex items-start gap-3">
+                <Zap className="text-blue-600 mt-1" size={20} />
+                <div className="flex-1">
+                  <p className="font-medium text-blue-800">{recommendations[0].title}</p>
+                  <p className="text-sm text-blue-700 mt-1">{recommendations[0].explanation}</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Quick Stats */}
           <div className="grid grid-cols-3 gap-3">

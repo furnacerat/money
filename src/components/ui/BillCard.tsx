@@ -7,6 +7,7 @@ import { formatCurrency, getBillCategoryColor } from "@/lib/utils";
 import { Badge } from "./Badge";
 import { Card } from "./Card";
 import { format, differenceInDays } from "date-fns";
+import { getComputedBillStatus, isBillPaidForCurrentPeriod } from "@/lib/planner";
 import {
   Calendar,
   CreditCard,
@@ -53,21 +54,27 @@ export function BillCard({ bill, onMarkPaid, compact = false }: BillCardProps) {
   const categoryColor = getBillCategoryColor(bill.category);
 
   const getStatusBadge = () => {
-    switch (bill.status) {
+    const isPaid = isBillPaidForCurrentPeriod(bill);
+    if (isPaid) {
+      return <Badge variant="success" size="sm">Paid</Badge>;
+    }
+    
+    const computedStatus = getComputedBillStatus(bill, today);
+    switch (computedStatus) {
       case "due_today":
         return <Badge variant="danger" size="sm">Due Today</Badge>;
       case "due_soon":
         return <Badge variant="warning" size="sm">Due Soon</Badge>;
-      case "overdue":
-        return <Badge variant="danger" size="sm" pulse>Overdue</Badge>;
-      case "paid":
-        return <Badge variant="success" size="sm">Paid</Badge>;
       default:
-        return null;
+        return <Badge variant="neutral" size="sm">To Pay</Badge>;
     }
   };
 
   const getDueLabel = () => {
+    const isPaid = isBillPaidForCurrentPeriod(bill);
+    if (isPaid) {
+      return "Paid this month";
+    }
     if (daysUntilDue === 0) return "Due today";
     if (daysUntilDue === 1) return "Due tomorrow";
     if (daysUntilDue < 0) return `${Math.abs(daysUntilDue)} days overdue`;

@@ -18,7 +18,12 @@ import {
   BarChart3,
   Settings,
   Users,
+  Sliders,
+  FlaskConical,
+  LogOut,
+  RefreshCw,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -38,6 +43,9 @@ const moreLinks = [
   { href: "/expenses", icon: CreditCard, label: "Expenses" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
   { href: "/reports", icon: BarChart3, label: "Reports" },
+  { href: "/scenarios", icon: FlaskConical, label: "Scenarios" },
+  { href: "/rules", icon: Sliders, label: "Planning Rules" },
+  { href: "/invite", icon: Users, label: "Invite" },
   { href: "/settings", icon: Settings, label: "Settings" },
   { href: "/household", icon: Users, label: "Household" },
 ];
@@ -45,17 +53,20 @@ const moreLinks = [
 export function AppShell({ children, householdName = "Your Household" }: AppShellProps) {
   const pathname = usePathname();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const { user, signOut } = useAuth();
 
   const isMoreActive = pathname.startsWith("/savings") ||
     pathname.startsWith("/expenses") ||
     pathname.startsWith("/alerts") ||
     pathname.startsWith("/reports") ||
+    pathname.startsWith("/scenarios") ||
+    pathname.startsWith("/rules") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/household");
 
   return (
-    <div className="min-h-screen bg-[#FAFBFC] pb-20">
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-slate-100">
+    <div className="min-h-screen bg-[#F5F3EE] pb-20">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200/50">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-slate-800">Household Planner</h1>
@@ -71,7 +82,7 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
 
       <main className="max-w-lg mx-auto px-4 py-6">{children}</main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-200/50 z-50">
         <div className="max-w-lg mx-auto flex items-center justify-around py-2">
           {navItems.map((item) => {
             if (item.href === "#more") {
@@ -131,6 +142,22 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
               </Link>
             );
           })}
+          {user && (
+            <button
+              onClick={() => {
+                setIsMoreOpen(false);
+                signOut();
+              }}
+              className="flex items-center justify-between p-4 rounded-xl hover:bg-red-50 transition-colors w-full"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                  <LogOut className="w-5 h-5 text-red-600" />
+                </div>
+                <span className="font-medium text-red-600">Sign Out</span>
+              </div>
+            </button>
+          )}
         </div>
       </Sheet>
     </div>

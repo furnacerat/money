@@ -7,8 +7,8 @@ import { ToastProvider } from "@/components/ui";
 import { Card, Button, Badge, ProgressBar, EmptyState } from "@/components/ui";
 import { formatCurrency, getBillCategoryColor } from "@/lib/utils";
 import { Household, Bill, BillStatus } from "@/lib/types";
-import { getHouseholdData, getFundingMap } from "@/lib/storage";
-import { getBillFundingStatus } from "@/lib/planner";
+import { getHouseholdData, getFundingMap, saveHouseholdData } from "@/lib/storage";
+import { getBillFundingStatus, getComputedBillStatus, isBillPaidForCurrentPeriod, getCurrentPeriod, markBillAsPaid, resetBillForNewPeriod, getNextBillDueDate } from "@/lib/planner";
 import { format } from "date-fns";
 import { Plus, Filter, Calendar, ChevronRight, Home, Zap, Shield, Tv, Car, Heart, Package } from "lucide-react";
 
@@ -35,32 +35,100 @@ const FREQUENCY_LABELS: Record<string, string> = {
 export default function BillsPage() {
   const [household, setHousehold] = useState<Household | null>(null);
   const [fundingMap, setFundingMap] = useState<Record<string, number>>({});
-  const [filter, setFilter] = useState<"all" | "upcoming" | "funded" | "paid" | "overdue">("upcoming");
+  const [filter, setFilter] = useState<"all" | "unpaid" | "funded" | "paid" | "due_soon" | "past_due">("unpaid");
+  const [showPeriodPicker, setShowPeriodPicker] = useState<string | null>(null);
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+
+  const getPastMonths = () => {
+    const months = [];
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      months.push({ key, label });
+    }
+    return months;
+  };
+
+  const handlePayClick = (billId: string) => {
+    const bill = household?.bills.find(b => b.id === billId);
+    if (!bill) return;
+    
+    const nextDue = getNextBillDueDate(bill);
+    const currentMonth = new Date();
+    
+    if (nextDue < new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)) {
+      setSelectedBillId(billId);
+      setShowPeriodPicker(billId);
+    } else {
+      handleMarkPaid(billId);
+    }
+  };
+
+  const handlePeriodSelect = (period: string) => {
+    if (selectedBillId) {
+      handleMarkPaid(selectedBillId, period);
+      setShowPeriodPicker(null);
+      setSelectedBillId(null);
+    }
+  };
 
   useEffect(() => {
     const data = getHouseholdData() as Household | null;
     if (data) {
-      setHousehold(data);
+      const resetBills = (data.bills || []).map(resetBillForNewPeriod);
+      const updatedData = { ...data, bills: resetBills };
+      setHousehold(updatedData);
       setFundingMap(getFundingMap());
     }
   }, []);
 
   const bills = household?.bills || [];
   const today = new Date();
+  const currentPeriod = getCurrentPeriod();
 
   const filteredBills = bills.filter((bill) => {
+    const computedStatus = getComputedBillStatus(bill, today);
+    const isPaid = isBillPaidForCurrentPeriod(bill);
+    const nextDueDate = getNextBillDueDate(bill);
+    const wasDueBeforeCurrentMonth = nextDueDate < new Date(today.getFullYear(), today.getMonth(), 1);
+    
     switch (filter) {
       case "all": return true;
-      case "upcoming": return bill.status === "upcoming" || bill.status === "due_soon";
+      case "unpaid": return !isPaid;
       case "funded": {
         const funded = fundingMap[bill.id] || 0;
-        return funded >= bill.amount;
+        return funded >= bill.amount && !isPaid;
       }
-      case "paid": return bill.status === "paid";
-      case "overdue": return bill.status === "overdue";
+      case "paid": return isPaid;
+      case "due_soon": return computedStatus === "due_soon";
+      case "past_due": return !isPaid && wasDueBeforeCurrentMonth;
       default: return true;
     }
   });
+
+  const handleMarkPaid = (billId: string, period?: string) => {
+    if (!household) return;
+    
+    const targetPeriod = period || getCurrentPeriod();
+    
+    const updatedBills = household.bills.map(bill => {
+      if (bill.id === billId) {
+        return {
+          ...bill,
+          status: "paid" as const,
+          paidDate: new Date().toISOString().split("T")[0],
+          paidPeriod: targetPeriod,
+        };
+      }
+      return bill;
+    });
+    
+    const updatedHousehold = { ...household, bills: updatedBills };
+    setHousehold(updatedHousehold);
+    saveHouseholdData(updatedHousehold);
+  };
 
   const totalMonthly = bills
     .filter(b => b.status !== "paid")
@@ -93,6 +161,36 @@ export default function BillsPage() {
     <ToastProvider>
       <AppShell householdName={household.name}>
         <div className="space-y-6">
+          {/* Period Picker Modal */}
+          {showPeriodPicker && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <Card padding="lg" className="w-full max-w-sm">
+                <h3 className="font-semibold text-slate-800 mb-2">Mark as Paid</h3>
+                <p className="text-sm text-slate-500 mb-4">This bill is past due. Which month are you paying?</p>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {getPastMonths().map((month) => (
+                    <button
+                      key={month.key}
+                      onClick={() => handlePeriodSelect(month.key)}
+                      className="w-full p-3 text-left rounded-xl hover:bg-slate-100 transition-colors"
+                    >
+                      <span className="font-medium text-slate-800">{month.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPeriodPicker(null);
+                    setSelectedBillId(null);
+                  }}
+                  className="mt-4 w-full p-3 text-center rounded-xl text-slate-500 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+              </Card>
+            </div>
+          )}
+
           {/* Summary Card */}
           <Card variant="gradient">
             <div className="flex items-center justify-between">
@@ -111,10 +209,10 @@ export default function BillsPage() {
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
             {[
               { key: "all", label: "All" },
-              { key: "upcoming", label: "Upcoming" },
-              { key: "funded", label: "Funded" },
+              { key: "past_due", label: "Past Due" },
+              { key: "unpaid", label: "To Pay" },
+              { key: "due_soon", label: "Due Soon" },
               { key: "paid", label: "Paid" },
-              { key: "overdue", label: "Overdue" },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -134,7 +232,6 @@ export default function BillsPage() {
           {filteredBills.length === 0 ? (
             <Card padding="lg">
               <EmptyState
-                icon={<Calendar size={24} className="text-slate-400" />}
                 title="No bills found"
                 description={filter === "all" ? "Add your first bill to get started" : "No bills match this filter"}
                 action={
@@ -152,23 +249,29 @@ export default function BillsPage() {
                 const status = getBillFundingStatus(bill, fundingMap[bill.id] || 0);
                 const Icon = CATEGORY_ICONS[bill.category] || Package;
                 const categoryColor = getBillCategoryColor(bill.category);
-                const dueDate = new Date(today.getFullYear(), today.getMonth(), bill.dueDay);
-                const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                const isPaid = isBillPaidForCurrentPeriod(bill);
+                const computedStatus = getComputedBillStatus(bill, today);
 
                 const getStatusBadge = () => {
-                  if (bill.status === "paid") {
+                  if (isPaid) {
                     return <Badge variant="success" size="sm">Paid</Badge>;
                   }
                   if (status.isFunded) {
                     return <Badge variant="success" size="sm">Funded</Badge>;
                   }
-                  if (daysUntilDue <= 0) {
-                    return <Badge variant="danger" size="sm" pulse>Overdue</Badge>;
+                  if (computedStatus === "due_today") {
+                    return <Badge variant="danger" size="sm" pulse>Due Today</Badge>;
                   }
-                  if (daysUntilDue <= 3) {
+                  if (computedStatus === "due_soon") {
                     return <Badge variant="warning" size="sm">Due Soon</Badge>;
                   }
-                  return <Badge variant="neutral" size="sm">Upcoming</Badge>;
+                  return <Badge variant="neutral" size="sm">To Pay</Badge>;
+                };
+
+                const handlePayClickLocal = (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handlePayClick(bill.id);
                 };
 
                 return (
@@ -204,7 +307,7 @@ export default function BillsPage() {
                           <p className="text-xl font-bold text-slate-800">
                             {formatCurrency(bill.amount)}
                           </p>
-                          {bill.status !== "paid" && (
+                          {!isPaid && (
                             <p className={`text-xs mt-1 ${
                               status.isFunded ? "text-emerald-600" : "text-slate-500"
                             }`}>
@@ -215,7 +318,7 @@ export default function BillsPage() {
                           )}
                         </div>
                       </div>
-                      {bill.status !== "paid" && (
+                      {!isPaid && (
                         <div className="mt-3">
                           <ProgressBar
                             progress={status.fundedPercentage}
@@ -223,6 +326,18 @@ export default function BillsPage() {
                             height={6}
                           />
                         </div>
+                      )}
+                      {isPaid ? (
+                        <div className="mt-2 text-xs text-emerald-600 font-medium">
+                          Paid for {currentPeriod}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handlePayClickLocal}
+                          className="mt-2 text-xs text-blue-600 font-medium hover:text-blue-700"
+                        >
+                          Mark as paid →
+                        </button>
                       )}
                       <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                     </Card>

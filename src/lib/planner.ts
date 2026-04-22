@@ -340,3 +340,112 @@ export function getDashboardState(
     shortfall,
   };
 }
+
+export function getCurrentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function getPeriodKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+export function isBillPaidForCurrentPeriod(bill: Bill): boolean {
+  const currentPeriod = getCurrentPeriod();
+  if (bill.status === "paid" && bill.paidPeriod === currentPeriod) {
+    return true;
+  }
+  if (bill.paidPeriod === currentPeriod) {
+    return true;
+  }
+  return false;
+}
+
+export function getBillDueDate(bill: Bill, referenceDate?: Date): Date {
+  const ref = referenceDate || new Date();
+  const currentMonth = ref.getMonth();
+  const currentYear = ref.getFullYear();
+  const dueDay = Math.min(bill.dueDay, new Date(currentYear, currentMonth + 1, 0).getDate());
+  
+  let dueDate = new Date(currentYear, currentMonth, dueDay);
+  
+  if (isBefore(dueDate, ref) || dueDate.getTime() === ref.getTime()) {
+    const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
+    const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+    const nextDueDay = Math.min(bill.dueDay, new Date(nextYear, nextMonth + 1, 0).getDate());
+    dueDate = new Date(nextYear, nextMonth, nextDueDay);
+  }
+  
+  return dueDate;
+}
+
+export type ComputedBillStatus = "paid" | "due_soon" | "due_today" | "unpaid";
+
+export function getComputedBillStatus(bill: Bill, referenceDate?: Date): ComputedBillStatus {
+  const ref = referenceDate || new Date();
+  
+  if (isBillPaidForCurrentPeriod(bill)) {
+    return "paid";
+  }
+  
+  const dueDate = getBillDueDate(bill, ref);
+  const daysUntilDue = differenceInDays(dueDate, ref);
+  
+  if (daysUntilDue < 0) {
+    return "unpaid";
+  } else if (daysUntilDue === 0) {
+    return "due_today";
+  } else if (daysUntilDue <= 7) {
+    return "due_soon";
+  }
+  
+  return "unpaid";
+}
+
+export function getNextBillDueDate(bill: Bill): Date {
+  return getBillDueDate(bill);
+}
+
+export function markBillAsPaid(bill: Bill): Bill {
+  const currentPeriod = getCurrentPeriod();
+  return {
+    ...bill,
+    status: "paid",
+    paidDate: new Date().toISOString().split("T")[0],
+    paidPeriod: currentPeriod,
+  };
+}
+
+export function resetBillForNewPeriod(bill: Bill): Bill {
+  const currentPeriod = getCurrentPeriod();
+  if (bill.paidPeriod && bill.paidPeriod !== currentPeriod) {
+    return {
+      ...bill,
+      status: "unpaid",
+      paidDate: undefined,
+      paidPeriod: undefined,
+    };
+  }
+  return bill;
+}
+
+export function getBillsForCurrentPeriod(bills: Bill[]): { unpaid: Bill[]; paid: Bill[]; dueSoon: Bill[] } {
+  const currentPeriod = getCurrentPeriod();
+  const today = new Date();
+  
+  const paid = bills.filter(b => b.paidPeriod === currentPeriod);
+  const unpaid = bills.filter(b => b.paidPeriod !== currentPeriod);
+  
+  const dueSoon = unpaid.filter(bill => {
+    const dueDate = getBillDueDate(bill, today);
+    const daysUntilDue = differenceInDays(dueDate, today);
+    return daysUntilDue <= 7 && daysUntilDue >= 0;
+  });
+  
+  const overdue = unpaid.filter(bill => {
+    const dueDate = getBillDueDate(bill, today);
+    return isBefore(dueDate, today);
+  });
+  
+  return { paid, unpaid, dueSoon: [...dueSoon, ...overdue] };
+}

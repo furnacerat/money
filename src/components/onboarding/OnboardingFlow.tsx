@@ -83,7 +83,7 @@ const BILL_EMPTY: Omit<Bill, "id"> = {
   isAutoPay: false,
   category: "other",
   priority: 1,
-  status: "upcoming",
+  status: "unpaid",
 };
 
 export default function OnboardingPage() {
