@@ -4,10 +4,10 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout";
 import { ToastProvider } from "@/components/ui";
-import { Card, Button, Badge, ProgressBar, EmptyState } from "@/components/ui";
+import { Card, Button, Badge, ProgressBar, EmptyState, Input } from "@/components/ui";
 import { formatCurrency, getBillCategoryColor } from "@/lib/utils";
 import { Household, Bill, BillStatus } from "@/lib/types";
-import { getHouseholdData, getFundingMap, saveHouseholdData } from "@/lib/storage";
+import { getHouseholdData, getFundingMap, saveHouseholdData, saveFundingMap } from "@/lib/storage";
 import { getBillFundingStatus, getComputedBillStatus, isBillPaidForCurrentPeriod, getCurrentPeriod, markBillAsPaid, resetBillForNewPeriod, getNextBillDueDate } from "@/lib/planner";
 import { format } from "date-fns";
 import { Plus, Filter, Calendar, ChevronRight, Home, Zap, Shield, Tv, Car, Heart, Package } from "lucide-react";
@@ -38,6 +38,8 @@ export default function BillsPage() {
   const [filter, setFilter] = useState<"all" | "unpaid" | "funded" | "paid" | "due_soon" | "past_due">("unpaid");
   const [showPeriodPicker, setShowPeriodPicker] = useState<string | null>(null);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  const [showFundModal, setShowFundModal] = useState<string | null>(null);
+  const [existingFunds, setExistingFunds] = useState("");
 
   const getPastMonths = () => {
     const months = [];
@@ -72,6 +74,24 @@ export default function BillsPage() {
       setShowPeriodPicker(null);
       setSelectedBillId(null);
     }
+  };
+
+  const handleAddExistingFunds = (billId: string) => {
+    const amount = parseFloat(existingFunds) || 0;
+    if (amount <= 0 || !household) return;
+    
+    const currentFunded = fundingMap[billId] || 0;
+    const updatedFunding = { ...fundingMap, [billId]: currentFunded + amount };
+    setFundingMap(updatedFunding);
+    saveFundingMap(updatedFunding);
+    
+    setShowFundModal(null);
+    setExistingFunds("");
+  };
+
+  const openFundModal = (billId: string) => {
+    setSelectedBillId(billId);
+    setShowFundModal(billId);
   };
 
   useEffect(() => {
@@ -187,6 +207,44 @@ export default function BillsPage() {
                 >
                   Cancel
                 </button>
+              </Card>
+            </div>
+          )}
+
+          {/* Add Existing Funds Modal */}
+          {showFundModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <Card padding="lg" className="w-full max-w-sm">
+                <h3 className="font-semibold text-slate-800 mb-2">Add Existing Funds</h3>
+                <p className="text-sm text-slate-500 mb-4">
+                  How much have you already set aside for this bill outside the app?
+                </p>
+                <Input
+                  label="Amount already saved"
+                  type="number"
+                  value={existingFunds}
+                  onChange={(e) => setExistingFunds(e.target.value)}
+                  placeholder="0.00"
+                />
+                <div className="flex gap-3 mt-4">
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowFundModal(null);
+                      setExistingFunds("");
+                      setSelectedBillId(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleAddExistingFunds(showFundModal)}
+                  >
+                    Add Funds
+                  </Button>
+                </div>
               </Card>
             </div>
           )}
@@ -319,12 +377,22 @@ export default function BillsPage() {
                         </div>
                       </div>
                       {!isPaid && (
-                        <div className="mt-3">
+                        <div className="mt-3 space-y-2">
                           <ProgressBar
                             progress={status.fundedPercentage}
                             color={status.isFunded ? "#10B981" : "#8B5CF6"}
                             height={6}
                           />
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openFundModal(bill.id);
+                            }}
+                            className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                          >
+                            + Add existing funds
+                          </button>
                         </div>
                       )}
                       {isPaid ? (
