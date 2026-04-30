@@ -62,15 +62,15 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
 
   return (
     <div className="min-h-screen pb-24">
-      <header className="sticky top-0 z-50 border-b border-white/70 bg-white/72 backdrop-blur-2xl">
+      <header className="sticky top-0 z-50 border-b border-slate-700/70 bg-slate-950/88 text-white backdrop-blur-2xl">
         <div className="surface-line h-0.5 w-full" />
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-black tracking-tight text-slate-950">Household Planner</h1>
-            <p className="text-xs font-medium text-slate-500">{householdName}</p>
+            <h1 className="text-lg font-black tracking-tight text-white">Household Planner</h1>
+            <p className="text-xs font-medium text-slate-300">{householdName}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-slate-950 shadow-medium flex items-center justify-center">
+            <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/10 shadow-medium flex items-center justify-center">
               <span className="text-white text-xs font-black tracking-wide">
                 {householdName.slice(0, 2).toUpperCase()}
               </span>
@@ -92,8 +92,8 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
                   className={cn(
                     "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all duration-200",
                     isMoreActive
-                      ? "text-slate-950 bg-white shadow-soft"
-                      : "text-slate-500 hover:text-slate-800 hover:bg-white/70"
+                      ? "text-white bg-white/14 shadow-soft"
+                      : "text-slate-300 hover:text-white hover:bg-white/10"
                   )}
                 >
                   <MoreHorizontal size={24} strokeWidth={isMoreActive ? 2.5 : 2} />

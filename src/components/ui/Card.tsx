@@ -16,10 +16,10 @@ export function Card({
   ...props
 }: CardProps) {
   const variantStyles = {
-    default: "bg-white/90 border border-white/80 shadow-soft backdrop-blur-xl",
-    elevated: "bg-white border border-white shadow-medium",
-    outlined: "bg-white/45 border border-slate-200/80 backdrop-blur-xl",
-    gradient: "bg-gradient-to-br from-white via-slate-50 to-cyan-50/70 border border-white/80 shadow-soft backdrop-blur-xl",
+    default: "bg-slate-100/88 border border-slate-300/70 shadow-soft backdrop-blur-xl",
+    elevated: "bg-slate-100 border border-slate-300/80 shadow-medium",
+    outlined: "bg-slate-200/45 border border-slate-300/80 backdrop-blur-xl",
+    gradient: "bg-gradient-to-br from-slate-100 via-blue-50/80 to-cyan-100/60 border border-slate-300/70 shadow-soft backdrop-blur-xl",
   };
 
   const paddingStyles = {

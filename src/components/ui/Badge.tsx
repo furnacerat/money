@@ -94,8 +94,8 @@ export function NavItem({ href, icon, label, isActive = false }: NavItemProps) {
       className={cn(
         "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all duration-200",
         isActive
-          ? "text-slate-950 bg-white shadow-soft"
-          : "text-slate-500 hover:text-slate-800 hover:bg-white/70"
+          ? "text-white bg-white/14 shadow-soft"
+          : "text-slate-300 hover:text-white hover:bg-white/10"
       )}
     >
       <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
