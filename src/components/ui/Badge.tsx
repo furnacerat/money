@@ -22,18 +22,18 @@ export function Badge({
   className,
 }: BadgeProps) {
   const variantStyles: Record<BadgeVariant, string> = {
-    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    warning: "bg-amber-50 text-amber-700 border-amber-200",
-    danger: "bg-red-50 text-red-700 border-red-200",
-    info: "bg-blue-50 text-blue-700 border-blue-200",
-    neutral: "bg-slate-100 text-slate-700 border-slate-200",
-    gradient: "bg-gradient-to-r from-violet-500 to-purple-500 text-white border-transparent",
+    success: "bg-emerald-50 text-emerald-700 border-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.06)]",
+    warning: "bg-amber-50 text-amber-800 border-amber-200 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
+    danger: "bg-rose-50 text-rose-700 border-rose-200 shadow-[0_0_0_1px_rgba(225,29,72,0.08)]",
+    info: "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-[0_0_0_1px_rgba(6,182,212,0.08)]",
+    neutral: "bg-slate-100/80 text-slate-700 border-slate-200",
+    gradient: "bg-slate-950 text-white border-transparent shadow-soft",
   };
 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border font-medium",
+        "inline-flex items-center gap-1.5 rounded-md border font-medium",
         size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm",
         variantStyles[variant],
         className
@@ -92,10 +92,10 @@ export function NavItem({ href, icon, label, isActive = false }: NavItemProps) {
     <a
       href={href}
       className={cn(
-        "flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all duration-200",
+        "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all duration-200",
         isActive
-          ? "text-violet-600 bg-violet-50"
-          : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+          ? "text-slate-950 bg-white shadow-soft"
+          : "text-slate-500 hover:text-slate-800 hover:bg-white/70"
       )}
     >
       <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />

@@ -4,9 +4,9 @@ import React, { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout";
 import { ToastProvider } from "@/components/ui";
 import { Card, Button } from "@/components/ui";
-import { getHouseholdData, isOnboarded } from "@/lib/storage";
+import { getHouseholdData } from "@/lib/storage";
 import { formatCurrency } from "@/lib/utils";
-import { Household, PayFrequency } from "@/lib/types";
+import { Household } from "@/lib/types";
 import { getNextPayday } from "@/lib/planner";
 import { format, differenceInDays } from "date-fns";
 import { Wallet, Plus, ChevronRight } from "lucide-react";
@@ -17,10 +17,14 @@ export default function PaycheckPage() {
   const [showPlanning, setShowPlanning] = useState(false);
 
   useEffect(() => {
-    const data = getHouseholdData() as Household | null;
-    if (data) {
-      setHousehold(data);
-    }
+    const loadData = () => {
+      const data = getHouseholdData() as Household | null;
+      if (data) {
+        setHousehold(data);
+      }
+    };
+
+    void Promise.resolve().then(loadData);
   }, []);
 
   if (!household) {
@@ -55,19 +59,20 @@ export default function PaycheckPage() {
     <ToastProvider>
       <AppShell householdName={household.name}>
         <div className="space-y-6">
-          <Card variant="gradient" padding="lg" className="relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-600 to-purple-700 opacity-10" />
+          <Card padding="lg" className="relative overflow-hidden bg-slate-950 text-white shadow-lifted">
+            <div className="absolute inset-x-0 top-0 h-1 surface-line" />
+            <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(79,70,229,0.28),transparent_45%),linear-gradient(225deg,rgba(20,184,166,0.22),transparent_40%)]" />
             <div className="relative text-center py-6">
-              <div className="w-14 h-14 rounded-full bg-violet-100 flex items-center justify-center mx-auto mb-4">
-                <Wallet className="w-7 h-7 text-violet-600" />
+              <div className="w-14 h-14 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center mx-auto mb-4">
+                <Wallet className="w-7 h-7 text-white" />
               </div>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">
+              <p className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-1">
                 Next Paycheck
               </p>
-              <p className="text-4xl font-bold text-slate-800">
+              <p className="text-4xl font-black tracking-tight text-white">
                 {formatCurrency(incomeSource?.amount || 0)}
               </p>
-              <p className="text-sm text-slate-500 mt-2">
+              <p className="text-sm text-slate-300 mt-2">
                 {payday ? `arriving ${format(payday, "EEEE, MMM d")} (${daysUntil} days)` : "Set up your income in onboarding"}
               </p>
             </div>

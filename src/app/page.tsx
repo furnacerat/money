@@ -111,16 +111,17 @@ export default function HomeDashboard() {
       <AppShell householdName={household.name}>
         <div className="space-y-6 animate-fade-in">
           {/* Hero: Safe to Spend */}
-          <Card variant="gradient" className="relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-600 to-purple-700 opacity-10" />
+          <Card className="relative overflow-hidden bg-slate-950 text-white shadow-lifted">
+            <div className="absolute inset-x-0 top-0 h-1 surface-line" />
+            <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(79,70,229,0.28),transparent_45%),linear-gradient(225deg,rgba(20,184,166,0.22),transparent_40%)]" />
             <div className="relative text-center py-8">
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">
+              <p className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-2">
                 Safe to Spend
               </p>
-              <p className="text-5xl sm:text-6xl font-bold text-slate-800">
+              <p className="text-5xl sm:text-6xl font-black tracking-tight text-white">
                 {formatCurrency(dashboardState.safeToSpend)}
               </p>
-              <p className="text-sm text-slate-500 mt-2">
+              <p className="text-sm text-slate-300 mt-2">
                 from your current balance
               </p>
               <div className="mt-4">
@@ -314,7 +315,7 @@ export default function HomeDashboard() {
               <div className="flex items-start gap-3">
                 <CheckCircle className="text-emerald-600 mt-1" size={24} />
                 <div className="flex-1">
-                  <p className="font-semibold text-emerald-800">You're Protected</p>
+                  <p className="font-semibold text-emerald-800">You&apos;re Protected</p>
                   <p className="text-sm text-emerald-700 mt-1">
                     Bills are covered and your buffer is healthy. Great job!
                   </p>

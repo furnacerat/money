@@ -16,10 +16,10 @@ export function Card({
   ...props
 }: CardProps) {
   const variantStyles = {
-    default: "bg-white shadow-soft",
-    elevated: "bg-white shadow-medium",
-    outlined: "bg-transparent border-2 border-slate-200",
-    gradient: "bg-gradient-to-br from-slate-50 to-white shadow-soft",
+    default: "bg-white/90 border border-white/80 shadow-soft backdrop-blur-xl",
+    elevated: "bg-white border border-white shadow-medium",
+    outlined: "bg-white/45 border border-slate-200/80 backdrop-blur-xl",
+    gradient: "bg-gradient-to-br from-white via-slate-50 to-cyan-50/70 border border-white/80 shadow-soft backdrop-blur-xl",
   };
 
   const paddingStyles = {
@@ -32,7 +32,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl transition-all duration-250",
+        "rounded-lg transition-all duration-250",
         variantStyles[variant],
         paddingStyles[padding],
         className

@@ -1,12 +1,9 @@
 import {
   Household,
   Bill,
-  SavingsGoal,
-  PaycheckPlan,
   PayFrequency,
-  IncomeSource,
 } from "./types";
-import { differenceInDays, addDays, addWeeks, format, isBefore, isAfter, parseISO, startOfToday } from "date-fns";
+import { differenceInDays, addDays, addWeeks, isBefore, isAfter, parseISO, startOfToday } from "date-fns";
 
 export type PlanningSettings = {
   groceryDefault: number;
@@ -51,6 +48,36 @@ export function getToday(): Date {
   return startOfToday();
 }
 
+function getPeriodKeyForDate(date: Date): string {
+  return getPeriodKey(date.getFullYear(), date.getMonth() + 1);
+}
+
+function getDueDateForMonth(bill: Bill, year: number, monthIndex: number): Date {
+  const dueDay = Math.min(bill.dueDay, new Date(year, monthIndex + 1, 0).getDate());
+  return new Date(year, monthIndex, dueDay);
+}
+
+function isPaidForPeriod(bill: Bill, date: Date): boolean {
+  return bill.paidPeriod === getPeriodKeyForDate(date);
+}
+
+function getBillDueDateCandidates(bill: Bill, referenceDate: Date, throughDate: Date): Date[] {
+  const candidates: Date[] = [];
+  const refMonthStart = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+  const throughMonthStart = new Date(throughDate.getFullYear(), throughDate.getMonth(), 1);
+
+  let cursor = new Date(refMonthStart);
+  while (cursor <= throughMonthStart) {
+    const dueDate = getDueDateForMonth(bill, cursor.getFullYear(), cursor.getMonth());
+    if (!isPaidForPeriod(bill, dueDate)) {
+      candidates.push(dueDate);
+    }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+
+  return candidates;
+}
+
 export function getNextPayday(
   frequency: PayFrequency,
   lastPayday: string,
@@ -91,16 +118,13 @@ export function getBillsDueBeforePayday(
   const ref = referenceDate || getToday();
   
   return bills.filter((bill) => {
-    if (bill.status === "paid") return false;
-    
-    const dueDate = new Date(
-      ref.getFullYear(),
-      ref.getMonth(),
-      bill.dueDay
-    );
-    
-    return isBefore(dueDate, payday) || dueDate.getTime() === payday.getTime();
-  }).sort((a, b) => a.dueDay - b.dueDay);
+    const dueDates = getBillDueDateCandidates(bill, ref, payday);
+    return dueDates.some((dueDate) => dueDate <= payday);
+  }).sort((a, b) => {
+    const aDue = getBillDueDate(a, ref).getTime();
+    const bDue = getBillDueDate(b, ref).getTime();
+    return aDue - bDue;
+  });
 }
 
 export function getBillFundingStatus(
@@ -141,18 +165,197 @@ export function calculateTotalReserved(
 
 export function getSavingsContribution(
   mode: "survival" | "normal" | "growth",
-  paycheckAmount: number
+  paycheckAmount: number,
+  minSavings: number = 0
 ): number {
-  switch (mode) {
-    case "survival":
-      return paycheckAmount * 0.05;
-    case "normal":
-      return paycheckAmount * 0.10;
-    case "growth":
-      return paycheckAmount * 0.15;
-    default:
-      return paycheckAmount * 0.10;
-  }
+  const percent = (() => {
+    switch (mode) {
+      case "survival":
+        return 0.05;
+      case "normal":
+        return 0.10;
+      case "growth":
+        return 0.15;
+      default:
+        return 0.10;
+    }
+  })();
+
+  return Math.max(minSavings, paycheckAmount * percent);
+}
+
+export function getAdaptiveSavingsContribution(
+  mode: "survival" | "normal" | "growth",
+  paycheckAmount: number,
+  remainingAfterEssentials: number,
+  minSavings: number = 0
+): number {
+  if (remainingAfterEssentials <= 0) return 0;
+
+  const target = getSavingsContribution(mode, paycheckAmount, minSavings);
+  return Math.min(target, remainingAfterEssentials);
+}
+
+function getCategoryAmount(
+  allocations: PaycheckAllocation[],
+  category: PaycheckAllocation["category"]
+): number {
+  return allocations.find((allocation) => allocation.category === category)?.amount || 0;
+}
+
+function buildAllocationPlan(
+  paycheckAmount: number,
+  bills: Bill[],
+  payday: Date,
+  fundingMap: Record<string, number>,
+  savingsMode: "survival" | "normal" | "growth",
+  settings: PlanningSettings
+): { allocations: PaycheckAllocation[]; billAllocations: Record<string, number>; shortfall: number } {
+  const billsDue = getBillsDueBeforePayday(bills, payday).sort((a, b) => {
+    const dueDiff = getBillDueDate(a).getTime() - getBillDueDate(b).getTime();
+    return dueDiff === 0 ? a.priority - b.priority : dueDiff;
+  });
+  const billAllocations: Record<string, number> = {};
+  let remainingPaycheck = Math.max(0, paycheckAmount);
+
+  billsDue.forEach((bill) => {
+    const remainingBillNeed = Math.max(0, bill.amount - (fundingMap[bill.id] || 0));
+    const amount = Math.min(remainingBillNeed, remainingPaycheck);
+    if (amount > 0) {
+      billAllocations[bill.id] = amount;
+      remainingPaycheck -= amount;
+    }
+  });
+
+  const billsToFund = Object.values(billAllocations).reduce((sum, amount) => sum + amount, 0);
+  const groceries = Math.min(settings.groceryDefault, remainingPaycheck);
+  remainingPaycheck -= groceries;
+
+  const gas = Math.min(settings.gasDefault, remainingPaycheck);
+  remainingPaycheck -= gas;
+
+  const cushion = Math.min(settings.minBuffer, remainingPaycheck);
+  remainingPaycheck -= cushion;
+
+  const savingsContribution = getAdaptiveSavingsContribution(
+    savingsMode,
+    paycheckAmount,
+    remainingPaycheck,
+    settings.minSavings
+  );
+  remainingPaycheck -= savingsContribution;
+
+  const totalBillNeed = billsDue.reduce((sum, bill) => {
+    return sum + Math.max(0, bill.amount - (fundingMap[bill.id] || 0));
+  }, 0);
+  const shortfall = Math.max(0, totalBillNeed - billsToFund);
+
+  return {
+    billAllocations,
+    shortfall,
+    allocations: [
+      {
+        category: "bills",
+        label: "Bills & Reserves",
+        amount: billsToFund,
+        color: "#8B5CF6",
+      },
+      {
+        category: "savings",
+        label: "Savings",
+        amount: savingsContribution,
+        color: "#10B981",
+      },
+      {
+        category: "groceries",
+        label: "Groceries",
+        amount: groceries,
+        color: "#F59E0B",
+      },
+      {
+        category: "gas",
+        label: "Gas",
+        amount: gas,
+        color: "#3B82F6",
+      },
+      {
+        category: "cushion",
+        label: "Buffer",
+        amount: cushion,
+        color: "#06B6D4",
+      },
+      {
+        category: "safe",
+        label: "Safe to Spend",
+        amount: Math.max(0, remainingPaycheck),
+        color: "#EC4899",
+      },
+    ],
+  };
+}
+
+export function suggestBillAllocations(
+  paycheckAmount: number,
+  bills: Bill[],
+  payday: Date,
+  fundingMap: Record<string, number>,
+  savingsMode: "survival" | "normal" | "growth",
+  settings: PlanningSettings
+): Record<string, number> {
+  return buildAllocationPlan(
+    paycheckAmount,
+    bills,
+    payday,
+    fundingMap,
+    savingsMode,
+    settings
+  ).billAllocations;
+}
+
+export function calculateAllocationShortfall(
+  paycheckAmount: number,
+  bills: Bill[],
+  payday: Date,
+  fundingMap: Record<string, number>,
+  billAllocations: Record<string, number>
+): number {
+  const billsDue = getBillsDueBeforePayday(bills, payday);
+  const allocatedToBills = Object.values(billAllocations).reduce((sum, amount) => sum + amount, 0);
+  const totalNeed = billsDue.reduce((sum, bill) => {
+    return sum + Math.max(0, bill.amount - (fundingMap[bill.id] || 0));
+  }, 0);
+
+  return Math.max(0, totalNeed - Math.min(allocatedToBills, paycheckAmount));
+}
+
+export function rebalanceSafeToSpend(
+  paycheckAmount: number,
+  allocations: PaycheckAllocation[],
+  billAllocations: Record<string, number>
+): PaycheckAllocation[] {
+  const billTotal = Object.values(billAllocations).reduce((sum, amount) => sum + Math.max(0, amount), 0);
+  const nonSafeNonBills = allocations.reduce((sum, allocation) => {
+    if (allocation.category === "safe" || allocation.category === "bills") return sum;
+    return sum + Math.max(0, allocation.amount);
+  }, 0);
+  const safe = Math.max(0, paycheckAmount - billTotal - nonSafeNonBills);
+
+  return allocations.map((allocation) => {
+    if (allocation.category === "bills") return { ...allocation, amount: billTotal };
+    if (allocation.category === "safe") return { ...allocation, amount: safe };
+    return allocation;
+  });
+}
+
+export function getAllocationTotal(allocations: PaycheckAllocation[]): number {
+  return allocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+}
+
+export function getAllocationAmount(
+  allocations: PaycheckAllocation[],
+  category: PaycheckAllocation["category"]
+): number {
+  return getCategoryAmount(allocations, category);
 }
 
 export function calculateSafeToSpend(
@@ -164,9 +367,7 @@ export function calculateSafeToSpend(
   paycheckAmount: number,
   settings: PlanningSettings
 ): { safeToSpend: number; shortfall: number; amountSetAside: number } {
-  const today = getToday();
   const billsDue = getBillsDueBeforePayday(bills, payday);
-  const totalBills = billsDue.reduce((sum, bill) => sum + bill.amount, 0);
   
   const currentlyReserved = Object.entries(fundingMap).reduce((sum, [billId, funded]) => {
     const bill = bills.find((b) => b.id === billId);
@@ -181,7 +382,7 @@ export function calculateSafeToSpend(
     return sum + remaining;
   }, 0);
   
-  const savingsContribution = getSavingsContribution(savingsMode, paycheckAmount);
+  const savingsContribution = getSavingsContribution(savingsMode, paycheckAmount, settings.minSavings);
   const amountSetAside = billsToFund + savingsContribution + settings.minBuffer;
   
   const availableAfterReserve = currentBalance - currentlyReserved;
@@ -215,59 +416,14 @@ export function suggestPaycheckAllocation(
   savingsMode: "survival" | "normal" | "growth",
   settings: PlanningSettings
 ): PaycheckAllocation[] {
-  const billsDue = getBillsDueBeforePayday(bills, payday);
-  
-  const billsToFund = billsDue.reduce((sum, bill) => {
-    const remaining = Math.max(0, bill.amount - (fundingMap[bill.id] || 0));
-    return sum + remaining;
-  }, 0);
-  
-  const savingsContribution = getSavingsContribution(savingsMode, paycheckAmount);
-  const groceries = settings.groceryDefault;
-  const gas = settings.gasDefault;
-  const cushion = settings.minBuffer;
-  
-  const totalAllocated = billsToFund + savingsContribution + groceries + gas + cushion;
-  const safeAmount = Math.max(0, paycheckAmount - totalAllocated);
-  
-  return [
-    {
-      category: "bills",
-      label: "Bills & Reserves",
-      amount: billsToFund,
-      color: "#8B5CF6",
-    },
-    {
-      category: "savings",
-      label: "Savings",
-      amount: savingsContribution,
-      color: "#10B981",
-    },
-    {
-      category: "groceries",
-      label: "Groceries",
-      amount: groceries,
-      color: "#F59E0B",
-    },
-    {
-      category: "gas",
-      label: "Gas",
-      amount: gas,
-      color: "#3B82F6",
-    },
-    {
-      category: "cushion",
-      label: "Buffer",
-      amount: cushion,
-      color: "#06B6D4",
-    },
-    {
-      category: "safe",
-      label: "Safe to Spend",
-      amount: safeAmount,
-      color: "#EC4899",
-    },
-  ];
+  return buildAllocationPlan(
+    paycheckAmount,
+    bills,
+    payday,
+    fundingMap,
+    savingsMode,
+    settings
+  ).allocations;
 }
 
 export function calculateBillReserveFromPaycheck(
@@ -321,7 +477,8 @@ export function getDashboardState(
   const amountReserved = calculateTotalReserved(fundingMap);
   const savingsTarget = getSavingsContribution(
     household.settings.savingsMode,
-    incomeSource.amount
+    incomeSource.amount,
+    settings.minSavings
   );
   
   const totalBillsDue = billsDue.reduce((sum, bill) => sum + bill.amount, 0);
@@ -362,27 +519,20 @@ export function isBillPaidForCurrentPeriod(bill: Bill): boolean {
 }
 
 export function getBillDueDate(bill: Bill, referenceDate?: Date): Date {
-  const ref = referenceDate || new Date();
-  const currentMonth = ref.getMonth();
-  const currentYear = ref.getFullYear();
-  const dueDay = Math.min(bill.dueDay, new Date(currentYear, currentMonth + 1, 0).getDate());
-  
-  let dueDate = new Date(currentYear, currentMonth, dueDay);
-  
-  if (isBefore(dueDate, ref) || dueDate.getTime() === ref.getTime()) {
-    const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
-    const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
-    const nextDueDay = Math.min(bill.dueDay, new Date(nextYear, nextMonth + 1, 0).getDate());
-    dueDate = new Date(nextYear, nextMonth, nextDueDay);
+  const ref = referenceDate || getToday();
+  const currentDueDate = getDueDateForMonth(bill, ref.getFullYear(), ref.getMonth());
+
+  if (isPaidForPeriod(bill, currentDueDate)) {
+    return getDueDateForMonth(bill, ref.getFullYear(), ref.getMonth() + 1);
   }
-  
-  return dueDate;
+
+  return currentDueDate;
 }
 
 export type ComputedBillStatus = "paid" | "due_soon" | "due_today" | "unpaid";
 
 export function getComputedBillStatus(bill: Bill, referenceDate?: Date): ComputedBillStatus {
-  const ref = referenceDate || new Date();
+  const ref = referenceDate || getToday();
   
   if (isBillPaidForCurrentPeriod(bill)) {
     return "paid";

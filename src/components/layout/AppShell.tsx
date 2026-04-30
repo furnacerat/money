@@ -7,9 +7,6 @@ import { cn } from "@/lib/utils";
 import { NavItem } from "@/components/ui";
 import { Sheet } from "@/components/ui/Modal";
 import {
-  Home,
-  Calendar,
-  Receipt,
   MoreHorizontal,
   ChevronRight,
   PiggyBank,
@@ -21,7 +18,6 @@ import {
   Sliders,
   FlaskConical,
   LogOut,
-  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -65,16 +61,19 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
     pathname.startsWith("/household");
 
   return (
-    <div className="min-h-screen bg-[#FFFFE3] pb-20">
-      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-[#CBCBCB]/50">
+    <div className="min-h-screen pb-24">
+      <header className="sticky top-0 z-50 border-b border-white/70 bg-white/72 backdrop-blur-2xl">
+        <div className="surface-line h-0.5 w-full" />
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-slate-800">Household Planner</h1>
-            <p className="text-xs text-slate-500">{householdName}</p>
+            <h1 className="text-lg font-black tracking-tight text-slate-950">Household Planner</h1>
+            <p className="text-xs font-medium text-slate-500">{householdName}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
-              <span className="text-white text-xs font-semibold">JD</span>
+            <div className="w-9 h-9 rounded-lg bg-slate-950 shadow-medium flex items-center justify-center">
+              <span className="text-white text-xs font-black tracking-wide">
+                {householdName.slice(0, 2).toUpperCase()}
+              </span>
             </div>
           </div>
         </div>
@@ -82,8 +81,8 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
 
       <main className="max-w-lg mx-auto px-4 py-6">{children}</main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-[#CBCBCB]/50 z-50">
-        <div className="max-w-lg mx-auto flex items-center justify-around py-2">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-3">
+        <div className="glass-panel max-w-lg mx-auto flex items-center justify-around rounded-lg px-1 py-2">
           {navItems.map((item) => {
             if (item.href === "#more") {
               return (
@@ -91,10 +90,10 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
                   key={item.href}
                   onClick={() => setIsMoreOpen(true)}
                   className={cn(
-                    "flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all duration-200",
+                    "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all duration-200",
                     isMoreActive
-                      ? "text-violet-600 bg-violet-50"
-                      : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                      ? "text-slate-950 bg-white shadow-soft"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-white/70"
                   )}
                 >
                   <MoreHorizontal size={24} strokeWidth={isMoreActive ? 2.5 : 2} />
@@ -130,10 +129,10 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
                 key={link.href}
                 href={link.href}
                 onClick={() => setIsMoreOpen(false)}
-                className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition-colors"
+                className="flex items-center justify-between p-4 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
                     <Icon className="w-5 h-5 text-slate-600" />
                   </div>
                   <span className="font-medium text-slate-800">{link.label}</span>
@@ -148,10 +147,10 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
                 setIsMoreOpen(false);
                 signOut();
               }}
-              className="flex items-center justify-between p-4 rounded-xl hover:bg-red-50 transition-colors w-full"
+              className="flex items-center justify-between p-4 rounded-lg hover:bg-red-50 transition-colors w-full"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
                   <LogOut className="w-5 h-5 text-red-600" />
                 </div>
                 <span className="font-medium text-red-600">Sign Out</span>

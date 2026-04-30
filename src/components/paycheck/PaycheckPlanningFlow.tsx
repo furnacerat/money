@@ -6,19 +6,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card, Button, Input, ProgressBar, Badge } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import {
-  getDashboardState,
   suggestPaycheckAllocation,
+  suggestBillAllocations,
+  calculateAllocationShortfall,
+  rebalanceSafeToSpend,
+  getAllocationTotal,
+  getAllocationAmount,
   getBillsDueBeforePayday,
   getBillFundingStatus,
   getNextPayday,
+  getBillDueDate,
   PlanningSettings,
 } from "@/lib/planner";
 import {
   Household,
-  Bill,
   PaycheckEntry,
   PaycheckAllocation,
-  PayFrequency,
 } from "@/lib/types";
 import {
   getHouseholdData,
@@ -27,9 +30,8 @@ import {
   savePaycheckPlans,
   getPaycheckPlans,
   getSettings,
-  saveSettings as saveSettingsToStorage,
 } from "@/lib/storage";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import {
   DollarSign,
   ChevronLeft,
@@ -62,18 +64,19 @@ export default function PaycheckPlanningFlow() {
 
   const currentIndex = STEPS.indexOf(currentStep);
   const isFirstStep = currentIndex === 0;
-  const isLastStep = currentStep === "result";
   const progress = (currentIndex / (STEPS.length - 1)) * 100;
 
   useEffect(() => {
-    const data = getHouseholdData() as Household | null;
-    if (data) {
-      setHousehold(data);
-      const fm = getFundingMap();
-      setFundingMap(fm);
-      const sets = getSettings();
-      setSettings(sets);
-    }
+    const loadData = () => {
+      const data = getHouseholdData() as Household | null;
+      if (data) {
+        setHousehold(data);
+        setFundingMap(getFundingMap());
+        setSettings(getSettings());
+      }
+    };
+
+    void Promise.resolve().then(loadData);
   }, []);
 
   const incomeSource = household?.incomeSources[0];
@@ -84,6 +87,19 @@ export default function PaycheckPlanningFlow() {
   const billsDue = household?.bills
     ? getBillsDueBeforePayday(household.bills, payday)
     : [];
+  const balancedAllocations = rebalanceSafeToSpend(paycheckAmount, allocations, billAllocations);
+  const totalAllocated = getAllocationTotal(balancedAllocations);
+  const safeToSpend = getAllocationAmount(balancedAllocations, "safe");
+  const billsReservedThisCheck = getAllocationAmount(balancedAllocations, "bills");
+  const billShortfall = household
+    ? calculateAllocationShortfall(
+        paycheckAmount,
+        household.bills,
+        payday,
+        fundingMap,
+        billAllocations
+      )
+    : 0;
 
   const goNext = () => {
     const idx = STEPS.indexOf(currentStep);
@@ -110,32 +126,33 @@ export default function PaycheckPlanningFlow() {
       household?.settings.savingsMode || "normal",
       settings!
     );
-    setAllocations(suggested);
-    
-    const initialBillAlloc: Record<string, number> = {};
-    billsDue.forEach((bill) => {
-      const remaining = bill.amount - (fundingMap[bill.id] || 0);
-      initialBillAlloc[bill.id] = Math.min(remaining, paycheckAmount * 0.25);
-    });
+    const initialBillAlloc = suggestBillAllocations(
+      paycheckAmount,
+      household?.bills || [],
+      payday,
+      fundingMap,
+      household?.settings.savingsMode || "normal",
+      settings!
+    );
     setBillAllocations(initialBillAlloc);
+    setAllocations(rebalanceSafeToSpend(paycheckAmount, suggested, initialBillAlloc));
     
     goNext();
   };
 
-  const handleAllocationAdjust = (category: string, amount: number) => {
-    setAllocations((prev) =>
-      prev.map((a) =>
-        a.category === category ? { ...a, amount } : a
-      )
-    );
-  };
-
   const handleBillAllocationAdjust = (billId: string, amount: number) => {
-    setBillAllocations((prev) => ({ ...prev, [billId]: amount }));
+    setBillAllocations((prev) => {
+      const bill = billsDue.find((item) => item.id === billId);
+      const maxNeeded = bill ? Math.max(0, bill.amount - (fundingMap[bill.id] || 0)) : amount;
+      const next = { ...prev, [billId]: Math.min(Math.max(0, amount), maxNeeded) };
+      setAllocations((current) => rebalanceSafeToSpend(paycheckAmount, current, next));
+      return next;
+    });
   };
 
   const handleConfirm = () => {
     setIsProcessing(true);
+    const finalAllocations = rebalanceSafeToSpend(paycheckAmount, allocations, billAllocations);
     
     const newFundingMap = { ...fundingMap };
     Object.entries(billAllocations).forEach(([billId, amount]) => {
@@ -150,7 +167,7 @@ export default function PaycheckPlanningFlow() {
       date: paycheckDate,
       incomeSourceId: incomeSource?.id || "",
       notes,
-      allocations,
+      allocations: finalAllocations,
       status: "completed",
       createdAt: new Date().toISOString(),
     };
@@ -271,13 +288,13 @@ export default function PaycheckPlanningFlow() {
               <div className="text-center">
                 <h2 className="text-2xl font-bold text-slate-800">Suggested Plan</h2>
                 <p className="text-slate-500 mt-2">
-                  Here's how to allocate your {formatCurrency(paycheckAmount)}
+                  Bills first, then essentials, savings, and safe spending.
                 </p>
               </div>
 
               <Card padding="lg">
                 <div className="space-y-4">
-                  {allocations.map((item) => {
+                  {balancedAllocations.map((item) => {
                     const percentage = paycheckAmount > 0
                       ? (item.amount / paycheckAmount) * 100
                       : 0;
@@ -315,6 +332,20 @@ export default function PaycheckPlanningFlow() {
                 </div>
               </Card>
 
+              {billShortfall > 0 && (
+                <Card padding="md" className="border border-amber-200 bg-amber-50">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-amber-800">This check is short for all upcoming bills</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        The plan reserves {formatCurrency(billsReservedThisCheck)} for bills and leaves {formatCurrency(billShortfall)} still needed before payday.
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               <div className="flex gap-3">
                 <Button variant="outline" onClick={goBack} className="flex-1">
                   Back
@@ -347,21 +378,25 @@ export default function PaycheckPlanningFlow() {
                     const allocated = billAllocations[bill.id] || 0;
                     const afterAllocation = status.fundedAmount + allocated;
                     const newRemaining = Math.max(0, bill.amount - afterAllocation);
+                    const billDueDate = getBillDueDate(bill);
                     
                     return (
                       <Card key={bill.id} padding="md">
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <p className="font-semibold text-slate-800">{bill.name}</p>
-                            <p className="text-sm text-slate-500">
+                            <p className="hidden">
                               Due day {bill.dueDay} • {formatCurrency(bill.amount)}
+                            </p>
+                            <p className="text-sm text-slate-500">
+                              Due {format(billDueDate, "MMM d")} - {formatCurrency(bill.amount)}
                             </p>
                           </div>
                           <Badge
                             variant={status.isFunded ? "success" : "warning"}
                             size="sm"
                           >
-                            {status.isFunded ? "Funded" : "Need more"}
+                            {status.isFunded ? "Funded" : format(billDueDate, "MMM d")}
                           </Badge>
                         </div>
 
@@ -374,9 +409,15 @@ export default function PaycheckPlanningFlow() {
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-slate-500">This paycheck</span>
-                            <span className="font-medium text-violet-600">
-                              +{formatCurrency(allocated)}
-                            </span>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, bill.amount - status.fundedAmount)}
+                              value={allocated || ""}
+                              onChange={(e) => handleBillAllocationAdjust(bill.id, Number(e.target.value))}
+                              className="w-24 px-2 py-1 text-right text-sm"
+                              aria-label={`Amount from this paycheck for ${bill.name}`}
+                            />
                           </div>
                           <ProgressBar
                             progress={afterAllocation / bill.amount}
@@ -413,7 +454,7 @@ export default function PaycheckPlanningFlow() {
               <div className="text-center">
                 <h2 className="text-2xl font-bold text-slate-800">Confirm Plan</h2>
                 <p className="text-slate-500 mt-2">
-                  Review your paycheck allocation
+                  Review what will be reserved from this check
                 </p>
               </div>
 
@@ -425,7 +466,7 @@ export default function PaycheckPlanningFlow() {
                       {formatCurrency(paycheckAmount)}
                     </span>
                   </div>
-                  {allocations.filter(a => a.amount > 0).map((item) => (
+                  {balancedAllocations.filter(a => a.amount > 0).map((item) => (
                     <div key={item.category} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
                       <span className="text-slate-600">{item.label}</span>
                       <span className="font-semibold text-slate-800">
@@ -433,8 +474,28 @@ export default function PaycheckPlanningFlow() {
                       </span>
                     </div>
                   ))}
+                  <div className="flex items-center justify-between py-3 border-t border-slate-100">
+                    <span className="font-medium text-slate-700">Total assigned</span>
+                    <span className="font-bold text-slate-800">
+                      {formatCurrency(totalAllocated)}
+                    </span>
+                  </div>
                 </div>
               </Card>
+
+              {billShortfall > 0 && (
+                <Card padding="md" className="border border-red-200 bg-red-50">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-red-800">Bills still need attention</p>
+                      <p className="text-sm text-red-700 mt-1">
+                        After this plan, you still need {formatCurrency(billShortfall)} for bills due before the next check.
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
 
               <div className="flex gap-3">
                 <Button variant="outline" onClick={goBack} className="flex-1">
@@ -469,10 +530,13 @@ export default function PaycheckPlanningFlow() {
                 <div className="text-center">
                   <p className="text-sm text-slate-500 mb-2">Safe to Spend</p>
                   <p className="text-4xl font-bold text-emerald-600">
-                    {formatCurrency(
-                      allocations.find(a => a.category === "safe")?.amount || 0
-                    )}
+                    {formatCurrency(safeToSpend)}
                   </p>
+                  {billShortfall > 0 && (
+                    <p className="text-sm text-amber-700 mt-3">
+                      Keep an eye on {formatCurrency(billShortfall)} still needed for upcoming bills.
+                    </p>
+                  )}
                 </div>
               </Card>
 

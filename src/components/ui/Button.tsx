@@ -25,15 +25,15 @@ export function Button({
 }: ButtonProps) {
   const variantStyles = {
     primary:
-      "bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-700 hover:to-purple-700 shadow-soft hover:shadow-medium active:scale-[0.98]",
+      "bg-slate-950 text-white hover:bg-slate-800 shadow-soft hover:shadow-medium active:scale-[0.98]",
     secondary:
-      "bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-[0.98]",
+      "bg-white/80 text-slate-800 border border-slate-200 hover:bg-white hover:border-slate-300 active:scale-[0.98]",
     outline:
-      "border-2 border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 active:scale-[0.98]",
+      "border border-slate-300 bg-white/60 text-slate-800 hover:bg-white hover:border-slate-400 active:scale-[0.98]",
     ghost:
-      "text-slate-600 hover:bg-slate-100 active:scale-[0.98]",
+      "text-slate-600 hover:bg-white/70 active:scale-[0.98]",
     danger:
-      "bg-red-600 text-white hover:bg-red-700 shadow-soft active:scale-[0.98]",
+      "bg-rose-600 text-white hover:bg-rose-700 shadow-soft active:scale-[0.98]",
   };
 
   const sizeStyles = {
@@ -45,7 +45,8 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200",
+        "inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200",
+        "focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50",
         variantStyles[variant],
         sizeStyles[size],
         (disabled || isLoading) && "opacity-50 cursor-not-allowed",
