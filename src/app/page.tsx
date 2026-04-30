@@ -1,45 +1,27 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout";
-import { ToastProvider } from "@/components/ui";
-import { Card, StatusBadge, ProgressBar, Badge } from "@/components/ui";
+import { Badge, Card, ProgressBar, StatusBadge, ToastProvider } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
-import { Household, Bill, PayFrequency } from "@/lib/types";
+import { Household } from "@/lib/types";
+import { getBillFundingStatus, getDashboardState, getNextPayday, PlanningSettings } from "@/lib/planner";
+import { getFundingMap, getHouseholdData, getSettings, isOnboarded } from "@/lib/storage";
+import { analyzeAlerts, analyzeShortfall, generateRecommendations } from "@/lib/intelligence";
+import { differenceInDays, format } from "date-fns";
 import {
-  getDashboardState,
-  getBillsDueBeforePayday,
-  getBillFundingStatus,
-  getNextPayday,
-  getSavingsContribution,
-  PlanningSettings,
-} from "@/lib/planner";
-import {
-  getHouseholdData,
-  getFundingMap,
-  isOnboarded,
-  getSettings,
-  getAlerts,
-  getPlanningRules,
-} from "@/lib/storage";
-import { analyzeShortfall, generateRecommendations, analyzeAlerts } from "@/lib/intelligence";
-import { format, differenceInDays } from "date-fns";
-import {
+  AlertTriangle,
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  DollarSign,
   PiggyBank,
   Receipt,
-  AlertTriangle,
-  DollarSign,
-  Target,
   Shield,
-  ChevronRight,
-  Zap,
-  CheckCircle,
-  TrendingUp,
-  Bell,
-  ArrowRight,
+  WalletCards,
 } from "lucide-react";
-import Link from "next/link";
 
 export default function HomeDashboard() {
   const router = useRouter();
@@ -51,40 +33,35 @@ export default function HomeDashboard() {
   const [recommendations, setRecommendations] = useState<ReturnType<typeof generateRecommendations>>([]);
 
   useEffect(() => {
-    const checkOnboarding = () => {
+    const loadDashboard = () => {
       if (!isOnboarded()) {
         router.push("/onboarding");
         return;
       }
-      
+
       const data = getHouseholdData() as Household | null;
       const fundingMap = getFundingMap();
-      const sets = getSettings();
-      
+      const loadedSettings = getSettings();
+
       if (data) {
         setHousehold(data);
-        setSettings(sets);
-        const state = getDashboardState(data, fundingMap, sets);
-        setDashboardState(state);
-        
-        const sf = analyzeShortfall();
-        setShortfall(sf);
-        
-        const recs = generateRecommendations();
-        setRecommendations(recs);
-        
+        setSettings(loadedSettings);
+        setDashboardState(getDashboardState(data, fundingMap, loadedSettings));
+        setShortfall(analyzeShortfall());
+        setRecommendations(generateRecommendations());
         analyzeAlerts();
       }
-      
+
       setIsLoading(false);
     };
-    checkOnboarding();
+
+    void Promise.resolve().then(loadDashboard);
   }, [router]);
 
   if (isLoading || !household || !dashboardState || !settings) {
     return (
-      <div className="min-h-screen bg-[#FAFBFC] flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
       </div>
     );
   }
@@ -95,285 +72,197 @@ export default function HomeDashboard() {
     : new Date();
   const daysUntil = differenceInDays(payday, new Date());
   const billsDue = dashboardState.billsDueBeforePayday;
+  const nextRecommendation = recommendations[0];
+  const hasBillsToPlan = billsDue.some((bill) => {
+    const status = getBillFundingStatus(bill, getFundingMap()[bill.id] || 0);
+    return !status.isFunded;
+  });
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "on_track": return "On Track";
-      case "tight_this_week": return "Tight This Week";
-      case "bills_covered": return "Bills Covered";
-      case "shortfall_risk": return "Shortfall Risk";
-      default: return status;
-    }
-  };
+  const primaryAction = dashboardState.shortfall > 0 || hasBillsToPlan
+    ? {
+        href: "/paycheck",
+        label: "Plan next check",
+        description: "Reserve money for bills due before payday.",
+        icon: WalletCards,
+      }
+    : {
+        href: "/bills",
+        label: "Review bills",
+        description: "Everything looks covered. Keep bills current.",
+        icon: CheckCircle2,
+      };
+  const PrimaryIcon = primaryAction.icon;
 
   return (
     <ToastProvider>
       <AppShell householdName={household.name}>
-        <div className="space-y-6 animate-fade-in">
-          {/* Hero: Safe to Spend */}
+        <div className="space-y-5 animate-fade-in">
           <Card className="relative overflow-hidden bg-slate-950 text-white shadow-lifted">
             <div className="absolute inset-x-0 top-0 h-1 surface-line" />
             <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(79,70,229,0.28),transparent_45%),linear-gradient(225deg,rgba(20,184,166,0.22),transparent_40%)]" />
-            <div className="relative text-center py-8">
-              <p className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Safe to Spend
-              </p>
-              <p className="text-5xl sm:text-6xl font-black tracking-tight text-white">
-                {formatCurrency(dashboardState.safeToSpend)}
-              </p>
-              <p className="text-sm text-slate-300 mt-2">
-                from your current balance
-              </p>
-              <div className="mt-4">
+            <div className="relative py-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-300">Today&apos;s answer</p>
+                  <h2 className="mt-2 text-5xl font-black tracking-tight text-white">
+                    {formatCurrency(dashboardState.safeToSpend)}
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-300">safe to spend after protected money</p>
+                </div>
                 <StatusBadge status={dashboardState.overallStatus} />
               </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Payday</p>
+                  <p className="mt-1 text-lg font-black text-white">{daysUntil}</p>
+                  <p className="text-[11px] text-slate-300">{daysUntil === 1 ? "day" : "days"}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Bills</p>
+                  <p className="mt-1 text-lg font-black text-amber-200">{formatCurrency(dashboardState.totalBillsDue)}</p>
+                  <p className="text-[11px] text-slate-300">{billsDue.length} due</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Buffer</p>
+                  <p className="mt-1 text-lg font-black text-cyan-200">{formatCurrency(settings.minBuffer)}</p>
+                  <p className="text-[11px] text-slate-300">target</p>
+                </div>
+              </div>
             </div>
           </Card>
 
-          {/* Payday Countdown */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card padding="md" className="flex flex-col items-center justify-center">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${daysUntil <= 1 ? "bg-emerald-100" : "bg-violet-100"}`}>
-                <DollarSign className={`w-5 h-5 ${daysUntil <= 1 ? "text-emerald-600" : "text-violet-600"}`} />
+          <Link href={primaryAction.href}>
+            <Card padding="lg" className="border-slate-500/40 bg-slate-900/88 text-white hover:bg-slate-900 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white/12">
+                  <PrimaryIcon className="h-6 w-6 text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-300">Next best step</p>
+                  <h3 className="mt-1 text-xl font-black tracking-tight text-white">{primaryAction.label}</h3>
+                  <p className="mt-1 text-sm text-slate-300">{primaryAction.description}</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-slate-300" />
               </div>
-              <p className="text-sm text-slate-500">Next Payday</p>
-              <p className="text-2xl font-bold text-slate-800">{daysUntil}</p>
-              <p className="text-xs text-slate-500">{daysUntil === 1 ? "day away" : "days"}</p>
             </Card>
-            <Card padding="md" className="flex flex-col items-center justify-center">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mb-2">
-                <DollarSign className="text-emerald-600" size={20} />
-              </div>
-              <p className="text-sm text-slate-500">Current Balance</p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">
-                {formatCurrency(household.currentBalance)}
-              </p>
-            </Card>
+          </Link>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Link href="/paycheck">
+              <Card padding="md" className="h-full bg-blue-950/86 text-white border-blue-800/70">
+                <WalletCards className="mb-3 h-5 w-5 text-cyan-200" />
+                <p className="font-black text-white">Plan Check</p>
+                <p className="mt-1 text-xs text-blue-100">Allocate a new paycheck.</p>
+              </Card>
+            </Link>
+            <Link href="/timeline">
+              <Card padding="md" className="h-full bg-teal-950/86 text-white border-teal-800/70">
+                <CalendarDays className="mb-3 h-5 w-5 text-emerald-200" />
+                <p className="font-black text-white">Calendar</p>
+                <p className="mt-1 text-xs text-teal-100">See bills and paydays.</p>
+              </Card>
+            </Link>
           </div>
 
-          {/* Set Aside Summary */}
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
-                <Receipt className="text-violet-600" size={20} />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-800">Set Aside</p>
-                <p className="text-sm text-slate-500">Reserved for upcoming bills</p>
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-violet-600">
-              {formatCurrency(dashboardState.amountSetAside)}
-            </p>
-            <div className="mt-3 space-y-2">
-              <div className="flex justify-between py-2 px-3 rounded-lg bg-slate-50">
-                <span className="text-sm text-slate-600">Bills due</span>
-                <span className="text-sm font-semibold text-slate-800">
-                  {formatCurrency(dashboardState.totalBillsDue)}
-                </span>
-              </div>
-              <div className="flex justify-between py-2 px-3 rounded-lg bg-slate-50">
-                <span className="text-sm text-slate-600">Savings</span>
-                <span className="text-sm font-semibold text-emerald-600">
-                  {formatCurrency(dashboardState.savingsTarget)}
-                </span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Bills Due Before Payday */}
-          <Card>
-            <div className="flex items-center justify-between mb-4">
+          <Card padding="lg">
+            <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                  <AlertTriangle className="text-amber-600" size={20} />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900">
+                  <Receipt className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-800">Bills Before Payday</p>
-                  <p className="text-sm text-slate-500">
-                    {billsDue.length} bills due
-                  </p>
+                  <h3 className="font-black text-slate-900">Bills Before Payday</h3>
+                  <p className="text-sm text-slate-600">{format(payday, "EEE, MMM d")} is the next check</p>
                 </div>
               </div>
-              <p className="text-xl font-bold text-slate-800">
-                {formatCurrency(dashboardState.totalBillsDue)}
-              </p>
+              <Badge variant={hasBillsToPlan ? "warning" : "success"}>{hasBillsToPlan ? "Needs plan" : "Covered"}</Badge>
             </div>
+
             {billsDue.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {billsDue.slice(0, 4).map((bill) => {
                   const status = getBillFundingStatus(bill, getFundingMap()[bill.id] || 0);
-                  const progress = bill.amount > 0
-                    ? status.fundedAmount / bill.amount
-                    : 0;
-                  
+                  const progress = bill.amount > 0 ? status.fundedAmount / bill.amount : 0;
+
                   return (
-                    <div key={bill.id} className="p-3 rounded-xl bg-slate-50">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-800">{bill.name}</span>
-                          {bill.isAutoPay && (
-                            <Badge variant="info" size="sm">Auto</Badge>
-                          )}
+                    <div key={bill.id} className="rounded-lg bg-slate-200/70 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-slate-900">{bill.name}</p>
+                          <p className="text-xs text-slate-600">Due day {bill.dueDay}</p>
                         </div>
-                        <span className="font-semibold text-slate-800">
-                          {formatCurrency(bill.amount)}
-                        </span>
+                        <p className="font-black text-slate-900">{formatCurrency(bill.amount)}</p>
                       </div>
-                      <ProgressBar
-                        progress={progress}
-                        color={status.isFunded ? "#10B981" : "#8B5CF6"}
-                        height={6}
-                      />
-                      <div className="flex justify-between mt-1">
-                        <span className="text-xs text-slate-500">
-                          {formatCurrency(status.fundedAmount)} funded
-                        </span>
-                        <span className={`text-xs font-medium ${
-                          status.isFunded ? "text-emerald-600" : "text-amber-600"
-                        }`}>
-                          {status.isFunded ? "Covered" : `${formatCurrency(status.remainingNeeded)} needed`}
+                      <div className="mt-3">
+                        <ProgressBar
+                          progress={progress}
+                          color={status.isFunded ? "#10B981" : "#F59E0B"}
+                          backgroundColor="#CBD5E1"
+                          height={7}
+                        />
+                      </div>
+                      <div className="mt-2 flex justify-between text-xs font-semibold">
+                        <span className="text-slate-600">{formatCurrency(status.fundedAmount)} reserved</span>
+                        <span className={status.isFunded ? "text-emerald-700" : "text-amber-700"}>
+                          {status.isFunded ? "Covered" : `${formatCurrency(status.remainingNeeded)} left`}
                         </span>
                       </div>
                     </div>
                   );
                 })}
-                {billsDue.length > 4 && (
-                  <p className="text-sm text-slate-500 text-center py-2">
-                    +{billsDue.length - 4} more bills
-                  </p>
-                )}
+                <Link href="/bills" className="flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-bold text-white">
+                  Open bills <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
             ) : (
-              <p className="text-sm text-slate-500 text-center py-4">
-                No bills due before your next payday
-              </p>
+              <div className="rounded-lg bg-emerald-100 p-4 text-sm font-semibold text-emerald-800">
+                No bills are due before the next paycheck.
+              </div>
             )}
           </Card>
 
-          {/* Savings Summary */}
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <PiggyBank className="text-emerald-600" size={20} />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-800">Savings</p>
-                <p className="text-sm text-slate-500 capitalize">
-                  {household.settings.savingsMode} mode
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Per paycheck</p>
-                <p className="text-xl font-bold text-emerald-600">
-                  {formatCurrency(dashboardState.savingsTarget)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-slate-500">Progress</p>
-                <p className="text-xl font-bold text-slate-800">
-                  {household.savingsGoals.length} goals
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Intelligent Status Banner */}
-          {shortfall && shortfall.isTight && (
-            <Card 
-              className="border-l-4 border-amber-500 bg-amber-50"
-              padding="lg"
-            >
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="text-amber-600 mt-1" size={24} />
-                <div className="flex-1">
-                  <p className="font-semibold text-amber-800">Tight Month Ahead</p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    {shortfall.shortfallAmount > 0 
-                      ? `You're short ${formatCurrency(shortfall.shortfallAmount)} this pay period.`
-                      : "Your buffer is lower than usual."
-                    }
-                  </p>
-                  <Link href="/alerts">
-                    <button className="mt-2 text-sm font-medium text-amber-700 hover:text-amber-800 flex items-center gap-1">
-                      View Plan <ArrowRight size={14} />
-                    </button>
-                  </Link>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* All Protected - Positive reinforcement */}
-          {shortfall && !shortfall.isTight && (
-            <Card 
-              className="border-l-4 border-emerald-500 bg-emerald-50"
-              padding="lg"
-            >
-              <div className="flex items-start gap-3">
-                <CheckCircle className="text-emerald-600 mt-1" size={24} />
-                <div className="flex-1">
-                  <p className="font-semibold text-emerald-800">You&apos;re Protected</p>
-                  <p className="text-sm text-emerald-700 mt-1">
-                    Bills are covered and your buffer is healthy. Great job!
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Top Recommendation */}
-          {recommendations.length > 0 && !shortfall?.isTight && (
-            <Card padding="md" className="bg-blue-50 border border-blue-200">
-              <div className="flex items-start gap-3">
-                <Zap className="text-blue-600 mt-1" size={20} />
-                <div className="flex-1">
-                  <p className="font-medium text-blue-800">{recommendations[0].title}</p>
-                  <p className="text-sm text-blue-700 mt-1">{recommendations[0].explanation}</p>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Quick Stats */}
           <div className="grid grid-cols-3 gap-3">
-            <Card padding="sm" className="text-center">
-              <Target className="mx-auto text-blue-500 mb-2" size={20} />
-              <p className="text-xs text-slate-500">Savings Goals</p>
-              <p className="text-lg font-bold text-slate-800">
-                {household.savingsGoals.length}
-              </p>
-            </Card>
-            <Card padding="sm" className="text-center">
-              <Shield className="mx-auto text-violet-500 mb-2" size={20} />
-              <p className="text-xs text-slate-500">Buffer</p>
-              <p className="text-lg font-bold text-slate-800">
-                {formatCurrency(settings.minBuffer)}
-              </p>
-            </Card>
-            <Card padding="sm" className="text-center">
-              <DollarSign className="mx-auto text-emerald-500 mb-2" size={20} />
-              <p className="text-xs text-slate-500">Per Check</p>
-              <p className="text-lg font-bold text-slate-800">
-                {formatCurrency(incomeSource?.amount || 0)}
-              </p>
-            </Card>
+            <Link href="/savings">
+              <Card padding="sm" className="text-center">
+                <PiggyBank className="mx-auto mb-2 text-emerald-600" size={20} />
+                <p className="text-xs text-slate-600">Savings</p>
+                <p className="text-lg font-black text-slate-900">{household.savingsGoals.length}</p>
+              </Card>
+            </Link>
+            <Link href="/expenses">
+              <Card padding="sm" className="text-center">
+                <DollarSign className="mx-auto mb-2 text-blue-600" size={20} />
+                <p className="text-xs text-slate-600">Balance</p>
+                <p className="text-lg font-black text-slate-900">{formatCurrency(household.currentBalance)}</p>
+              </Card>
+            </Link>
+            <Link href="/rules">
+              <Card padding="sm" className="text-center">
+                <Shield className="mx-auto mb-2 text-violet-600" size={20} />
+                <p className="text-xs text-slate-600">Rules</p>
+                <p className="text-lg font-black text-slate-900">Set</p>
+              </Card>
+            </Link>
           </div>
 
-          {/* Reassuring Message */}
-          <Card variant="outlined" padding="md" className="text-center">
-            <p className="text-slate-600">
-              {dashboardState.overallStatus === "on_track"
-                ? "You're on track! Your money is working hard for your family."
-                : dashboardState.overallStatus === "tight_this_week"
-                ? "This week's a bit tight, but you've got this."
-                : dashboardState.shortfall > 0
-                ? "You have a shortfall. Let's adjust your plan."
-                : "Your bills are covered. That's what matters most."}
-            </p>
-          </Card>
+          {(shortfall?.isTight || nextRecommendation) && (
+            <Card padding="lg" className={shortfall?.isTight ? "border-amber-300 bg-amber-100" : "border-blue-300 bg-blue-100"}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle className={shortfall?.isTight ? "mt-1 h-5 w-5 text-amber-700" : "mt-1 h-5 w-5 text-blue-700"} />
+                <div>
+                  <p className={shortfall?.isTight ? "font-black text-amber-900" : "font-black text-blue-900"}>
+                    {shortfall?.isTight ? "Cash flow needs attention" : nextRecommendation?.title}
+                  </p>
+                  <p className={shortfall?.isTight ? "mt-1 text-sm text-amber-800" : "mt-1 text-sm text-blue-800"}>
+                    {shortfall?.shortfallAmount
+                      ? `You are short ${formatCurrency(shortfall.shortfallAmount)} this pay period.`
+                      : nextRecommendation?.explanation || "Review your plan before spending extra."}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       </AppShell>
     </ToastProvider>

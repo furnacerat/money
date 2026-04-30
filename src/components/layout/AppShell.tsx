@@ -27,23 +27,23 @@ interface AppShellProps {
 }
 
 const navItems = [
-  { href: "/", icon: "home" as const, label: "Home" },
-  { href: "/paycheck", icon: "calendar" as const, label: "Paycheck" },
+  { href: "/", icon: "home" as const, label: "Today" },
+  { href: "/paycheck", icon: "wallet" as const, label: "Plan" },
   { href: "/bills", icon: "bills" as const, label: "Bills" },
-  { href: "/timeline", icon: "calendar" as const, label: "Timeline" },
+  { href: "/timeline", icon: "calendar" as const, label: "Calendar" },
   { href: "#more", icon: "more" as const, label: "More" },
 ];
 
 const moreLinks = [
-  { href: "/savings", icon: PiggyBank, label: "Savings" },
-  { href: "/expenses", icon: CreditCard, label: "Expenses" },
-  { href: "/alerts", icon: Bell, label: "Alerts" },
-  { href: "/reports", icon: BarChart3, label: "Reports" },
-  { href: "/scenarios", icon: FlaskConical, label: "Scenarios" },
-  { href: "/rules", icon: Sliders, label: "Planning Rules" },
-  { href: "/invite", icon: Users, label: "Invite" },
-  { href: "/settings", icon: Settings, label: "Settings" },
-  { href: "/household", icon: Users, label: "Household" },
+  { href: "/savings", icon: PiggyBank, label: "Savings Goals", group: "Money tools" },
+  { href: "/expenses", icon: CreditCard, label: "Spending", group: "Money tools" },
+  { href: "/alerts", icon: Bell, label: "Alerts", group: "Money tools" },
+  { href: "/reports", icon: BarChart3, label: "Reports", group: "Review" },
+  { href: "/scenarios", icon: FlaskConical, label: "What If", group: "Review" },
+  { href: "/rules", icon: Sliders, label: "Planning Rules", group: "Setup" },
+  { href: "/household", icon: Users, label: "Household", group: "Setup" },
+  { href: "/invite", icon: Users, label: "Invite Family", group: "Setup" },
+  { href: "/settings", icon: Settings, label: "Settings", group: "Setup" },
 ];
 
 export function AppShell({ children, householdName = "Your Household" }: AppShellProps) {
@@ -57,8 +57,15 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
     pathname.startsWith("/reports") ||
     pathname.startsWith("/scenarios") ||
     pathname.startsWith("/rules") ||
+    pathname.startsWith("/invite") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/household");
+
+  const groupedLinks = moreLinks.reduce<Record<string, typeof moreLinks>>((groups, link) => {
+    groups[link.group] = groups[link.group] || [];
+    groups[link.group].push(link);
+    return groups;
+  }, {});
 
   return (
     <div className="min-h-screen pb-24">
@@ -121,26 +128,33 @@ export function AppShell({ children, householdName = "Your Household" }: AppShel
         onClose={() => setIsMoreOpen(false)}
         title="More"
       >
-        <div className="space-y-2">
-          {moreLinks.map((link) => {
-            const Icon = link.icon;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setIsMoreOpen(false)}
-                className="flex items-center justify-between p-4 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <span className="font-medium text-slate-800">{link.label}</span>
-                </div>
-                <ChevronRight className="w-5 h-5 text-slate-400" />
-              </Link>
-            );
-          })}
+        <div className="space-y-5">
+          {Object.entries(groupedLinks).map(([group, links]) => (
+            <div key={group}>
+              <p className="px-1 pb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{group}</p>
+              <div className="space-y-2">
+                {links.map((link) => {
+                  const Icon = link.icon;
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setIsMoreOpen(false)}
+                      className="flex items-center justify-between p-4 rounded-lg bg-slate-50/80 hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center">
+                          <Icon className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="font-medium text-slate-800">{link.label}</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-400" />
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
           {user && (
             <button
               onClick={() => {
